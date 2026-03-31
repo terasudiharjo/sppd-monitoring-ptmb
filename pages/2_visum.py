@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 from utils.database import (
     get_all_pegawai, get_all_divisi,
@@ -35,6 +36,42 @@ KOTA_OPTIONS = [
 ]
 
 BULAN_ROMAWI = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"]
+
+def format_jabatan_divisi(jabatan_nama, divisi_nama):
+    """Format singkat jabatan + divisi untuk PDF visum.
+    - Manajer → Man - [nama divisi]
+    - Supervisor → Spv - [nama divisi]
+    - Staf/Pelaksana → Staf - [nama divisi]
+    - Lainnya (Direktur, Kepala, Dewas) → jabatan apa adanya
+    Prefix "Divisi " / "Sub Divisi " di nama DB di-strip supaya tidak redundant.
+    """
+    # Strip prefix bawaan DB: "Sub Divisi", "Sub.Divisi", "Divisi", dll (case-insensitive)
+    div = re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", divisi_nama, flags=re.IGNORECASE).strip()
+    div = div.title()
+
+    jab = jabatan_nama.lower()
+    if "manajer" in jab or "manager" in jab:
+        return f"Man - {div}"
+    elif "supervisor" in jab:
+        return f"Spv - {div}"
+    elif "staf" in jab or "pelaksana" in jab:
+        return f"Staf - {div}"
+    else:
+        return jabatan_nama.title()
+
+def _build_pembuka(disp: dict) -> str:
+    """Bangun kalimat pembuka surat tugas dari data disposisi."""
+    nomor   = disp.get("nomor", "").strip()
+    dari    = disp.get("dari", "").strip()
+    perihal = disp.get("perihal", "").strip()
+    parts = []
+    if dari:
+        parts.append(f"surat dari {dari}")
+    if nomor:
+        parts.append(f"dengan Nomor Surat {nomor}")
+    if perihal:
+        parts.append(f"perihal {perihal}")
+    return ", ".join(parts) if parts else ""
 
 # ─── HELPER ────────────────────────────────────────────
 def generate_nomor_visum() -> str:
@@ -184,6 +221,7 @@ with tab2:
             col_d1, col_d2 = st.columns(2)
             with col_d1:
                 nomor_disposisi   = st.text_input("Nomor Surat Disposisi", placeholder="Contoh: 123/DIR/II/2026")
+                dari_disposisi    = st.text_input("Dari (Pengirim Surat)", placeholder="Contoh: Kementerian PUPR")
                 perihal_disposisi = st.text_input("Perihal Surat Disposisi", placeholder="Contoh: Undangan Rapat Koordinasi")
             with col_d2:
                 link_disposisi = st.text_input("Link File Disposisi (Google Drive)", placeholder="https://drive.google.com/...")
@@ -218,8 +256,8 @@ with tab2:
                             "keperluan":         keperluan,
                             "peserta":           peserta_ids,
                             "status":     "active",
-                            "disposisi":  [{"nomor": nomor_disposisi, "perihal": perihal_disposisi, "link": link_disposisi}]
-                                          if (nomor_disposisi or perihal_disposisi or link_disposisi) else [],
+                            "disposisi":  [{"nomor": nomor_disposisi, "dari": dari_disposisi, "perihal": perihal_disposisi, "link": link_disposisi}]
+                                          if (nomor_disposisi or dari_disposisi or perihal_disposisi or link_disposisi) else [],
                         }).execute()
 
                         visum_baru = res_visum.data[0]
@@ -301,31 +339,36 @@ with tab3:
                 if not disp_list:
                     st.caption("Belum ada surat disposisi.")
                 else:
-                    hc1, hc2, hc3, _ = st.columns([2, 3, 3, 1])
+                    hc1, hc2, hc3, hc4, _ = st.columns([2, 2, 2, 2, 1])
                     hc1.caption("Nomor Surat")
-                    hc2.caption("Perihal")
-                    hc3.caption("Link Drive")
+                    hc2.caption("Dari")
+                    hc3.caption("Perihal")
+                    hc4.caption("Link Drive")
                     for i, disp in enumerate(disp_list):
-                        c1, c2, c3, c4 = st.columns([2, 3, 3, 1])
+                        c1, c2, c3, c4, c5 = st.columns([2, 2, 2, 2, 1])
                         with c1:
                             st.text_input("Nomor", value=disp.get("nomor",""),
                                           key=f"dn_{visum_id}_{i}", label_visibility="collapsed",
                                           placeholder="Nomor surat")
                         with c2:
+                            st.text_input("Dari", value=disp.get("dari",""),
+                                          key=f"dd_{visum_id}_{i}", label_visibility="collapsed",
+                                          placeholder="Pengirim surat")
+                        with c3:
                             st.text_input("Perihal", value=disp.get("perihal",""),
                                           key=f"dp_{visum_id}_{i}", label_visibility="collapsed",
                                           placeholder="Perihal surat")
-                        with c3:
+                        with c4:
                             st.text_input("Link", value=disp.get("link",""),
                                           key=f"dl_{visum_id}_{i}", label_visibility="collapsed",
                                           placeholder="Link Google Drive")
-                        with c4:
+                        with c5:
                             if disp.get("link"):
                                 st.link_button("🔗", disp["link"], help="Buka file")
                             if st.button("🗑️", key=f"ddel_{visum_id}_{i}", help="Hapus"):
                                 st.session_state[sk].pop(i)
                                 for j in range(len(st.session_state[sk]) + 2):
-                                    for pfx in ["dn_", "dp_", "dl_"]:
+                                    for pfx in ["dn_", "dd_", "dp_", "dl_"]:
                                         st.session_state.pop(f"{pfx}{visum_id}_{j}", None)
                                 st.rerun()
 
@@ -340,15 +383,16 @@ with tab3:
                         to_save = []
                         for i in range(len(disp_list)):
                             n = st.session_state.get(f"dn_{visum_id}_{i}", "").strip()
+                            d = st.session_state.get(f"dd_{visum_id}_{i}", "").strip()
                             p = st.session_state.get(f"dp_{visum_id}_{i}", "").strip()
                             l = st.session_state.get(f"dl_{visum_id}_{i}", "").strip()
-                            if n or p or l:
-                                to_save.append({"nomor": n, "perihal": p, "link": l})
+                            if n or d or p or l:
+                                to_save.append({"nomor": n, "dari": d, "perihal": p, "link": l})
                         db.table("visum").update({"disposisi": to_save})\
                             .eq("id", visum_id).execute()
                         st.session_state[sk] = to_save
                         for j in range(len(to_save) + 2):
-                            for pfx in ["dn_", "dp_", "dl_"]:
+                            for pfx in ["dn_", "dd_", "dp_", "dl_"]:
                                 st.session_state.pop(f"{pfx}{visum_id}_{j}", None)
                         st.success(f"✅ {len(to_save)} disposisi disimpan!")
                         st.rerun()
@@ -464,8 +508,8 @@ with tab3:
                         data_visum = {
                             "nomor":            v["nomor_visum"],
                             "tanggal":          datetime.strptime(v["tanggal_visum"], "%Y-%m-%d").date() if v.get("tanggal_visum") else date.today(),
-                            "nama_pegawai":     peserta_pdf[0]["nama"] if peserta_pdf else "-",
-                            "jabatan":          peserta_pdf[0]["jabatan"] if peserta_pdf else "-",
+                            "nama_pegawai":     peserta_pdf[0]["nama"].title() if peserta_pdf else "-",
+                            "jabatan":          format_jabatan_divisi(peserta_pdf[0]["jabatan"], peserta_pdf[0]["divisi"]) if peserta_pdf else "-",
                             "maksud":           v.get("keperluan", ""),
                             "alat_angkutan":    "Umum",
                             "tempat_berangkat": "Balikpapan",
@@ -473,7 +517,7 @@ with tab3:
                             "lama_hari":        f"{v['lama_hari']} hari",
                             "tgl_berangkat":    datetime.strptime(v["tanggal_berangkat"], "%Y-%m-%d").date(),
                             "tgl_kembali":      datetime.strptime(v["tanggal_kembali"],   "%Y-%m-%d").date(),
-                            "peserta_ikut":     [f"{p['nama']} ({p['jabatan']})" for p in peserta_pdf[1:]],
+                            "peserta_ikut":     [f"{p['nama'].title()} ({format_jabatan_divisi(p['jabatan'], p['divisi'])})" for p in peserta_pdf[1:]],
                             "ttd_nama":         "Dr. SAHARUDDIN, M.M.",
                         }
                         pdf_bytes = generate_visum(data_visum).read()
@@ -493,8 +537,8 @@ with tab3:
                             "nomor":    v["nomor_visum"].replace("-J", "-F"),
                             "tanggal":  datetime.strptime(v["tanggal_visum"], "%Y-%m-%d").date() if v.get("tanggal_visum") else date.today(),
                             "pembuka":  (
-                            f"Surat Nomor {v['disposisi'][0]['nomor']} tentang {v['disposisi'][0]['perihal']}"
-                            if v.get("disposisi") and v["disposisi"][0].get("nomor") and v["disposisi"][0].get("perihal")
+                            _build_pembuka(v["disposisi"][0])
+                            if v.get("disposisi") and (v["disposisi"][0].get("nomor") or v["disposisi"][0].get("perihal"))
                             else f"Perihal {v.get('keperluan','')}"
                         ),
                             "peserta":  peserta_pdf,

@@ -822,14 +822,25 @@ def _visum_lembaran1(c, data):
 
     y = y_top - kop_h   # y mulai dari bawah kop, langsung disambung tabel
 
-    def draw_row(label_lines, value_lines, row_h_cm, wrap_idx=None):
+    def _calc_line_h(vl, wrap_extra=0):
+        """Hitung tinggi satu baris value dengan Paragraph wrap."""
+        bold = vl.startswith("**")
+        txt  = vl.replace("**", "")
+        fn   = FONT_BOLD if bold else FONT_NORMAL
+        style = ParagraphStyle("_ch", fontName=fn, fontSize=fs, leading=fs*1.3)
+        p = Paragraph(txt, style)
+        _, ph = p.wrap(val_w - val_i - 0.2*cm, 500)
+        return max(ph, line_gap) + wrap_extra
+
+    def draw_row(label_lines, value_lines, row_h_cm, wrap_idx=None, wrap_all=False, wrap_extra_cm=0.15):
         """
         Gambar satu row tabel visum.
         label_lines : list string, baris-baris label kiri
         value_lines : list string, baris-baris value kanan
                       prefix "**" = bold
         row_h_cm    : tinggi row dalam cm
-        wrap_idx    : index di value_lines yang mau di-wrap (None = semua drawString biasa)
+        wrap_idx    : index tunggal di value_lines yang di-wrap
+        wrap_all    : True = semua value_lines di-wrap dengan Paragraph
         """
         nonlocal y
         rh = row_h_cm * cm
@@ -846,21 +857,21 @@ def _visum_lembaran1(c, data):
 
         # Tulis value
         cur_y = y - 0.38*cm
+        pw = val_w - val_i - 0.2*cm
         for k, vl in enumerate(value_lines):
             bold = vl.startswith("**")
             txt  = vl.replace("**", "")
             fn   = FONT_BOLD if bold else FONT_NORMAL
-            if wrap_idx is not None and k == wrap_idx:
-                # pakai Paragraph supaya teks wrap otomatis
+            if wrap_all or (wrap_idx is not None and k == wrap_idx):
                 style = ParagraphStyle("vs", fontName=fn, fontSize=fs, leading=fs*1.3)
                 p = Paragraph(txt, style)
-                pw = val_w - val_i - 0.2*cm
                 _, ph = p.wrap(pw, rh)
                 p.drawOn(c, val_x + val_i, cur_y - ph + fs*0.35)
+                cur_y -= max(ph, line_gap) + wrap_extra_cm * cm
             else:
                 c.setFont(fn, fs)
                 c.drawString(val_x + val_i, cur_y, txt)
-            cur_y -= line_gap
+                cur_y -= line_gap
 
         y -= rh
 
@@ -872,14 +883,20 @@ def _visum_lembaran1(c, data):
         1.5,
     )
 
-    # ── ROW 2: Jabatan / Biaya ──
+    # ── ROW 2: Jabatan / Biaya ── (tinggi dinamis supaya jabatan bisa wrap)
+    _jab_line = f"a.  Jabatan/Divisi  :  {data.get('jabatan','')}"
+    _style_jab = ParagraphStyle("jab", fontName=FONT_BOLD, fontSize=fs, leading=fs*1.35)
+    _p_jab = Paragraph(_jab_line, _style_jab)
+    _, _jab_h = _p_jab.wrap(val_w - val_i - 0.2*cm, 200)
+    row2_h = max(2.0, (_jab_h / cm) + 1.1)   # +1.1cm untuk baris b & c
     draw_row(
         ["2.  Jabatan/Divisi, Pangkat & Golongan, dan Biaya",
          "    Perjalanan Dinas Yang Diperintahkan"],
         [f"a.  Jabatan/Divisi  :  **{data.get('jabatan','')}",
          "b.  Pangkat & Gol  :",
          "c.  Biaya SPPD      :"],
-        2.0,
+        row2_h,
+        wrap_idx=0,
     )
 
     # ── ROW 3: Maksud ──
@@ -926,17 +943,24 @@ def _visum_lembaran1(c, data):
         2.0,
     )
 
-    # ── ROW 7: Peserta ──
+    # ── ROW 7: Peserta ── (tinggi dinamis, semua baris bisa wrap)
     pi = data.get("peserta_ikut", [])
-    pi_lines = [f"{i+1}   **{p}" for i, p in enumerate(pi)]
+    pi_lines = [f"{i+1}.  **{p}" for i, p in enumerate(pi)]
     n_slot = max(len(pi), 4)             # minimal 4 slot kosong
     for i in range(len(pi), n_slot):
-        pi_lines.append(f"{i+1}")
-    row7_h = max(3.5, 0.38 + n_slot * 0.45)
+        pi_lines.append(f"{i+1}.")
+    # Hitung tinggi total dari actual Paragraph height
+    _top_pad7 = 0.38 * cm
+    _total7   = _top_pad7
+    for _vl in pi_lines:
+        _total7 += _calc_line_h(_vl, wrap_extra=0) + 0.05 * cm
+    row7_h = max(3.5, _total7 / cm + 0.3)
     draw_row(
         ["7.  Nama Yang Diikutsertakan"],
         pi_lines,
         row7_h,
+        wrap_all=True,
+        wrap_extra_cm=0,
     )
 
     # ── ROW 8: Pembebanan Anggaran ──

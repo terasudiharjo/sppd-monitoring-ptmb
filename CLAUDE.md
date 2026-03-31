@@ -69,9 +69,10 @@ utils/
 ```
 id, nomor_visum, tanggal_visum, tujuan, tanggal_berangkat, tanggal_kembali,
 lama_hari, keperluan, peserta (jsonb), status,
-disposisi (jsonb array) ← [{nomor, perihal, link}, ...]
+disposisi (jsonb array) ← [{nomor, dari, perihal, link}, ...]
 ```
 → Bisa multi-surat disposisi per visum. Dipakai di Surat Tugas PDF (disposisi[0]).
+→ `dari` = pengirim surat (opsional, backward compatible — data lama tanpa `dari` tetap jalan).
 
 ### Kolom penting `sppd`:
 ```
@@ -180,6 +181,22 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 **Bug Fix:**
 31. `3_sppd.py`: fallback lookup rkap_id saat pencairan jika rkap_id null — cari dari jabatan+bidang+lokasi+bulan, deduct RKAP, simpan rkap_id
 32. `1_dashboard.py`: total anggaran terpakai & uang saku exclude draft & cancelled (konsisten dengan RKAP Monitor)
+
+### ✅ Sudah selesai (per sesi 2026-04-01):
+
+**Revisi PDF Visum (`pages/2_visum.py`, `utils/pdf_generator.py`):**
+33. Format jabatan di Nomor 2 & Nomor 7 visum: `Man - [divisi]` / `Spv - [divisi]` / `Staf - [divisi]` — prefix "Divisi"/"Sub Divisi" di-strip otomatis via regex
+34. Nama pegawai & jabatan: title case (`.title()`)
+35. Text wrap otomatis untuk Nomor 2 (jabatan panjang) dan Nomor 7 (nama peserta panjang) — tinggi row dihitung dinamis
+36. Extra gap 0.15cm setelah baris yang wrap di Nomor 2 (supaya tidak terlalu rapat ke b. Pangkat)
+37. Nomor peserta di Nomor 7: format `1.  Nama` (tambah titik)
+
+**Disposisi Visum — tambah field `dari`:**
+38. Field `dari` (pengirim surat) ditambah ke struktur disposisi: `{nomor, dari, perihal, link}`
+39. UI Tab 3 CRUD disposisi: kolom baru "Dari" (5 kolom sekarang)
+40. Form buat visum baru: input "Dari (Pengirim Surat)"
+41. Pembuka Surat Tugas PDF: format baru → "surat dari [dari], dengan Nomor Surat [nomor], perihal [perihal]"
+42. Helper `_build_pembuka()` — fleksibel, skip bagian yang kosong
 
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
