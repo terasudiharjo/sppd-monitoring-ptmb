@@ -5,7 +5,7 @@ from utils.database import (
     JABATAN_SORT_ORDER,
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
-    get_pegawai_by_jabatan_nama,
+    get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -270,6 +270,24 @@ with tab2:
                                  key=f"btn_print_{s['id']}"):
                         uang_saku = s.get("subtotal_uang_saku") or 0
                         total_cair = uang_saku + hotel_30pct
+                        # Resolve rkap_id jika belum ada
+                        rkap_id = s.get("rkap_id")
+                        if not rkap_id:
+                            peg_data = db.table("pegawai").select("jabatan(struktur_rkap), divisi(bidang, parent_id), divisi_id").eq("id", s["pegawai_id"]).single().execute().data
+                            if peg_data:
+                                struktur = (peg_data.get("jabatan") or {}).get("struktur_rkap", "")
+                                div = peg_data.get("divisi") or {}
+                                bidang = div.get("bidang")
+                                if not bidang and div.get("parent_id"):
+                                    p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
+                                    bidang = p["bidang"] if p else None
+                                kategori = resolve_kategori_rkap(struktur, bidang or "")
+                                tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
+                                if tgl:
+                                    bulan = int(tgl[5:7]); tahun = int(tgl[:4])
+                                    rkap_id = get_rkap_id(kategori, s["lokasi_id"], bulan, tahun)
+                                    if rkap_id:
+                                        db.table("sppd").update({"rkap_id": rkap_id}).eq("id", s["id"]).execute()
                         # Update status + menginap + hotel (kalau tidak menginap)
                         db.table("sppd").update({
                             "status":      "pencairan",
@@ -277,7 +295,6 @@ with tab2:
                             "total_hotel": hotel_30pct,
                             "total_biaya": total_cair,
                         }).eq("id", s["id"]).execute()
-                        rkap_id = s.get("rkap_id")
                         if rkap_id:
                             deduct_rkap(rkap_id, total_cair)
                         # Generate PDF
@@ -435,6 +452,23 @@ with tab2:
                         rkap_id    = s.get("rkap_id")
                         uang_saku  = s.get("subtotal_uang_saku") or 0
                         old_status = s["status"]
+
+                        if new_status == "pencairan" and old_status == "draft" and not rkap_id:
+                            peg_data = db.table("pegawai").select("jabatan(struktur_rkap), divisi(bidang, parent_id)").eq("id", s["pegawai_id"]).single().execute().data
+                            if peg_data:
+                                struktur = (peg_data.get("jabatan") or {}).get("struktur_rkap", "")
+                                div = peg_data.get("divisi") or {}
+                                bidang = div.get("bidang")
+                                if not bidang and div.get("parent_id"):
+                                    p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
+                                    bidang = p["bidang"] if p else None
+                                kategori = resolve_kategori_rkap(struktur, bidang or "")
+                                tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
+                                if tgl:
+                                    bulan = int(tgl[5:7]); tahun = int(tgl[:4])
+                                    rkap_id = get_rkap_id(kategori, s["lokasi_id"], bulan, tahun)
+                                    if rkap_id:
+                                        db.table("sppd").update({"rkap_id": rkap_id}).eq("id", s["id"]).execute()
 
                         if rkap_id:
                             if new_status == "pencairan" and old_status == "draft":

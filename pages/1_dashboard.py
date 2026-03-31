@@ -60,11 +60,12 @@ st.markdown("---")
 # ══════════════════════════════════════════════════════
 col1, col2, col3 = st.columns(3)
 
-total_biaya = sum(s.get("total_biaya") or 0 for s in sppd_list)
-total_uang_saku = sum(s.get("subtotal_uang_saku") or 0 for s in sppd_list)
+STATUS_TERPAKAI = {"pencairan", "realisasi", "completed"}
+total_biaya = sum(s.get("total_biaya") or 0 for s in sppd_list if s["status"] in STATUS_TERPAKAI)
+total_uang_saku = sum(s.get("subtotal_uang_saku") or 0 for s in sppd_list if s["status"] in STATUS_TERPAKAI)
 total_transport_hotel = sum(
-    (s.get("total_transport") or 0) + (s.get("total_hotel") or 0) 
-    for s in sppd_list
+    (s.get("total_transport") or 0) + (s.get("total_hotel") or 0)
+    for s in sppd_list if s["status"] in STATUS_TERPAKAI
 )
 
 def format_rupiah(amount):
