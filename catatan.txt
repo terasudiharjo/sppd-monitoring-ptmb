@@ -1,0 +1,6 @@
+ada beberapa komen ini aku mau...
+1. harusnya input realisasi muncul saat status ada di realisasi.
+2. trus untuk hotel itu kan ada yang kemungkinan ada yang pake hotel.. jadi dia realisasinya adalah otomatis 30 dari plafon.
+3. trus kalo bisa sperti yang aku kasih tau, di tab detail dan realisasi itu kalo bisa ditambah juga pilihan untuk visum nya. biar nggak kebanyakan. 
+4. untuk realisasi itu keknya butuh untuk bisa input file sebagai bukti nya. kek tiket ato voucher hotel nya.
+5. di tab 3 yang detail dan realisasi itu keknya yang nomor SPD diganti jadi durasi aja, karena udah muncul di pilih SPPD kan.

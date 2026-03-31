@@ -1,0 +1,60 @@
+read : input tabel ini dilakukan di supabase sql.
+
+-- Insert lokasi SPPD
+INSERT INTO lokasi_sppd (kode, nama, keterangan, status) VALUES
+('DK', 'Dalam Kaltim (Dalam Provinsi)', 'Perjalanan dinas dalam provinsi Kalimantan Timur', 'aktif'),
+('LK', 'Luar Kaltim (Luar Provinsi)', 'Perjalanan dinas luar provinsi Kalimantan Timur', 'aktif'),
+('LN', 'Luar Negeri', 'Perjalanan dinas ke luar negeri', 'aktif');
+
+-- Verify
+SELECT * FROM lokasi_sppd ORDER BY kode;
+
+
+-- Insert divisi utama (parent)
+INSERT INTO divisi (kode, nama, parent_id, bidang, status) VALUES
+('DEWAS', 'DEWAN PENGAWAS', NULL, 'Pengawasan', 'aktif'),
+('DIREKSI', 'DIREKSI', NULL, 'Kepemimpinan', 'aktif'),
+('DIST', 'DIVISI DISTRIBUSI', NULL, 'Teknik', 'aktif'),
+('KEU', 'DIVISI KEUANGAN', NULL, 'Administrasi', 'aktif'),
+('LAYAN', 'DIVISI LAYANAN PELANGGAN', NULL, 'Administrasi', 'aktif'),
+('PAL', 'DIVISI PENGOLAHAN AIR LIMBAH', NULL, 'Teknik', 'aktif'),
+('LTB', 'DIVISI PERENCANAAN DAN LITBANG', NULL, 'Teknik', 'aktif'),
+('PROD', 'DIVISI PRODUKSI', NULL, 'Teknik', 'aktif'),
+('SPI', 'DIVISI SATUAN PENGAWAS INTERNAL', NULL, 'Administrasi', 'aktif'),
+('SEK', 'DIVISI SEKRETARIS PERUSAHAAN', NULL, 'Administrasi', 'aktif'),
+('SIM', 'DIVISI SISTEM INFORMASI MANAJEMEN', NULL, 'Teknik', 'aktif'),
+('SDM', 'DIVISI SUMBER DAYA MANUSIA', NULL, 'Administrasi', 'aktif'),
+('UMUM', 'DIVISI UMUM', NULL, 'Administrasi', 'aktif');
+
+-- Insert sub-divisi (contoh beberapa aja dulu)
+-- Note: parent_id akan kita isi setelah tau ID divisi induk
+-- Kita skip dulu, atau insert manual via dashboard (easier!)
+
+-- Verify
+SELECT kode, nama, bidang FROM divisi WHERE parent_id IS NULL ORDER BY kode;
+
+
+-- Insert jabatan (REVISED - Generic structure)
+INSERT INTO jabatan (nama, nama_rule, level, struktur_rkap, status) VALUES
+
+-- Dewan Pengawas (specific)
+('KETUA DEWAN PENGAWAS', 'DIREKTUR UTAMA', 5, 'DEWAS_KETUA', 'aktif'),
+('ANGGOTA DEWAN PENGAWAS', 'DIREKTUR BIDANG', 5, 'DEWAS_ANGGOTA', 'aktif'),
+
+-- Direksi (specific - individual RKAP)
+('DIREKTUR UTAMA', 'DIREKTUR UTAMA', 4, 'DIRUT', 'aktif'),
+('DIREKTUR BIDANG UMUM', 'DIREKTUR BIDANG', 4, 'DIRUM', 'aktif'),
+('DIREKTUR OPERASIONAL', 'DIREKTUR BIDANG', 4, 'DIROPS', 'aktif'),
+('DIREKTUR TEKNIK', 'DIREKTUR BIDANG', 4, 'DIRTEK', 'aktif'),
+
+-- Generic jabatan (struktur_rkap determined by divisi.bidang!)
+('MANAJER', 'MANAJER', 3, 'MANAJER', 'aktif'),
+('SUPERVISOR', 'SUPERVISOR', 2, 'SUPERVISOR', 'aktif'),
+('STAF PELAKSANA', 'STAF PELAKSANA', 1, 'STAF_PELAKSANA', 'aktif'),
+
+-- Special cases
+('STAF AHLI BIDANG HUKUM DAN ASET PERUSAHAAN', 'SUPERVISOR', 3, 'ADM_SUPERVISOR', 'aktif'),
+('CALON PEGAWAI', 'STAF PELAKSANA', 0, 'BANTUAN', 'aktif');
+
+-- Verify
+SELECT nama, nama_rule, level, struktur_rkap, status FROM jabatan ORDER BY level DESC, nama;
