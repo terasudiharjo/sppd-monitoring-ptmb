@@ -164,13 +164,46 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 **Pegawai (`5_pegawai.py`):**
 23. Tab baru "Kelola Jabatan" — tambah jabatan baru (termasuk `DEWAS_ANGGOTA_2`) dan nonaktifkan dari UI tanpa buka Supabase
 
+### ✅ Sudah selesai (per sesi 2026-03-31):
+
+**Git & Deployment:**
+24. Repo GitHub: `github.com/terasudiharjo/sppd-monitoring-ptmb` (private)
+25. App live di Streamlit Cloud: `https://sppd-ptmb.streamlit.app` (public, ada auth login)
+26. Credentials login dipindah dari hardcode ke `.env` (APP_USERNAME, APP_PASSWORD)
+27. Streamlit Cloud pakai Secrets untuk semua 4 env vars
+
+**Import Data Historis:**
+28. `setup/import_realisasi_2026.py` — import 19 visum + 52 sppd Jan-Mar 2026, DRY_RUN mode, NAMA_MAP lengkap
+29. `setup/deduct_rkap_historis.py` — update rkap.anggaran_terpakai dari sppd historis (status=completed, rkap_id=null)
+30. Kedua script sudah dijalankan ke DB production (data Jan-Mar 2026 sudah masuk)
+
+**Bug Fix:**
+31. `3_sppd.py`: fallback lookup rkap_id saat pencairan jika rkap_id null — cari dari jabatan+bidang+lokasi+bulan, deduct RKAP, simpan rkap_id
+32. `1_dashboard.py`: total anggaran terpakai & uang saku exclude draft & cancelled (konsisten dengan RKAP Monitor)
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
-#### Import Data Historis:
-1. **Script import** `setup/import_realisasi_2026.py` — import data Jan-Mar 2026 dari `data/realisasi_sppd_2026.csv` ke DB. Dikerjakan mendekati go-live / testing ke tim sekper.
+#### Setelah Testing (saat ini sedang testing di tim sekper):
+1. **Fitur Laporan/Reporting** (`pages/6_laporan.py`) — halaman baru:
+   - Rekap jumlah perjalanan dinas per bulan & semester (trip, orang, total biaya)
+   - Laporan realisasi per bulan & semester (format tabel seperti `data/realisasi_sppd_2026.csv`)
+   - Bisa di-print / export PDF
+2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
+3. **Script clean DB** (`setup/clean_db.py`) — untuk reset transaksi saat go-live production:
+   - Hapus: visum, sppd, spd, sppd_biaya_lain, sppd_trip_detail
+   - Reset: rkap.anggaran_terpakai=0, anggaran_sisa=anggaran_awal
+   - Jangan hapus: pegawai, jabatan, divisi, lokasi_sppd, rule_sppd, rkap
+
+#### Flow Go-Live (setelah testing selesai):
+```
+1. python setup/clean_db.py
+2. python setup/import_realisasi_2026.py  (DRY_RUN=False)
+3. python setup/deduct_rkap_historis.py   (DRY_RUN=False)
+4. App live ✅
+```
 
 #### Opsional:
-2. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
+- **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
 
 ---
 
