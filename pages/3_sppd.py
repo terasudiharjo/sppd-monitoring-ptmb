@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 from utils.database import (
     get_rkap_id, get_rule_sppd, detect_lokasi,
@@ -24,6 +25,31 @@ if "authenticated" not in st.session_state or not st.session_state.authenticated
     st.stop()
 
 # ─── HELPER ────────────────────────────────────────────
+def _strip_div_prefix(nama: str) -> str:
+    return re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip().title()
+
+def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map: dict) -> str:
+    """Format jabatan untuk judul & TTD PDF SPPD (tidak disingkat, title case).
+    - Manajer  → 'Manajer [parent divisi]'
+    - Supervisor → 'Supervisor [own sub-divisi]'
+    - Staf     → 'Staf [own sub-divisi]'
+    - Lainnya  → jabatan.title()
+    """
+    if not divisi_obj or not isinstance(divisi_obj, dict):
+        return jabatan_nama.title()
+    jab = jabatan_nama.lower()
+    if "manajer" in jab or "manager" in jab:
+        parent_id = divisi_obj.get("parent_id")
+        parent_nama = divisi_map.get(parent_id, {}).get("nama", "") if parent_id else ""
+        div_label = _strip_div_prefix(parent_nama) if parent_nama else _strip_div_prefix(divisi_obj.get("nama", ""))
+        return f"Manajer {div_label}".strip()
+    elif "supervisor" in jab:
+        return f"Supervisor {_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
+    elif "staf" in jab or "pelaksana" in jab:
+        return f"Staf {_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
+    else:
+        return jabatan_nama.title()
+
 def format_rupiah(amount) -> str:
     if not amount:
         return "Rp 0"
@@ -140,11 +166,17 @@ with tab2:
 
         # ── Pilih Pegawai ──
         res = db.table("sppd")\
-            .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan_id, jabatan(nama, struktur_rkap)), visum(nomor_visum, tujuan, tanggal_berangkat, tanggal_kembali), spd(nomor_spd)")\
+            .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan_id, jabatan(nama, struktur_rkap), divisi(id, nama, parent_id)), visum(nomor_visum, tujuan, tanggal_berangkat, tanggal_kembali), spd(nomor_spd)")\
             .eq("spd_id", selected_spd["id"])\
             .order("created_at", desc=True)\
             .execute()
         sppd_dalam_spd = res.data
+        # Build divisi_map untuk parent lookup (format jabatan)
+        divisi_map_sppd = {}
+        for _s in sppd_dalam_spd:
+            _div = (_s.get("pegawai") or {}).get("divisi")
+            if _div and _div.get("id"):
+                divisi_map_sppd[_div["id"]] = _div
 
         if not sppd_dalam_spd:
             st.info("Belum ada SPPD dalam SPD ini.")
@@ -224,16 +256,22 @@ with tab2:
             pegawai_data = s.get("pegawai") or {}
             spd_data    = s.get("spd") or {}
 
+            _jab_fmt = format_jabatan_sppd_penerima(
+                pegawai_data.get("jabatan", {}).get("nama", ""),
+                pegawai_data.get("divisi"),
+                divisi_map_sppd,
+            )
+            _jab_label = f"{_jab_fmt} PTMB" if _jab_fmt else "PTMB"
             base_data = {
-                "nama_pejabat":     f"{pegawai_data.get('jabatan', {}).get('nama', '')} PTMB" if pegawai_data.get('jabatan') else "PTMB",
+                "nama_pejabat":     _jab_label,
                 "nomor_spd":        spd_data.get("nomor_spd", "-"),
                 "tanggal":          date.today(),
                 "tempat_tujuan":    visum_data.get("tujuan", ""),
                 "tgl_berangkat":    _parse_date(visum_data.get("tanggal_berangkat")),
                 "tgl_kembali":      _parse_date(visum_data.get("tanggal_kembali")),
                 "lama_hari":        s.get("total_hari", 0),
-                "nama_penerima":    pegawai_data.get("nama", ""),
-                "jabatan_penerima": f"{pegawai_data.get('jabatan', {}).get('nama', '')} PTMB" if pegawai_data.get('jabatan') else "PTMB",
+                "nama_penerima":    pegawai_data.get("nama", "").title(),
+                "jabatan_penerima": _jab_label,
                 "uang_harian":      (
                     (s.get("uang_harian_total") or 0) +
                     (s.get("uang_makan_total") or 0) +
@@ -309,11 +347,9 @@ with tab2:
                             use_container_width=True,
                             key=f"dl_pencairan_{s['id']}"
                         )
-                        # Update label dropdown
+                        # Update label dropdown agar nama tidak reset
                         nama_pgw  = pegawai_data.get("nama", "-")
-                        new_label = f"{nama_pgw} — PENCAIRAN"
-                        if new_label in sppd_keys:
-                            st.session_state[state_key] = new_label
+                        st.session_state[state_key] = f"{nama_pgw} — PENCAIRAN"
                         st.rerun()
 
                 elif s["status"] in ["pencairan", "realisasi", "completed"]:
@@ -373,13 +409,13 @@ with tab2:
             with col_pdf3:
                 if s["status"] in ["realisasi", "completed"]:
                     dir_umum = get_pegawai_by_jabatan_nama("Direktur Umum")
-                    dir_umum_nama = dir_umum["nama"].upper() if dir_umum else "DIREKTUR UMUM"
+                    dir_umum_nama = dir_umum["nama"].title() if dir_umum else "Direktur Umum"
                     pb_data = {
                         "nomor_surat":            spd_data.get("nomor_spd", "-").replace("-O", ""),
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
                         "tanggal_spd":            date.today(),
-                        "nama":                   pegawai_data.get("nama", ""),
-                        "jabatan":                f"{pegawai_data.get('jabatan', {}).get('nama', '')} PTMB" if pegawai_data.get('jabatan') else "PTMB",
+                        "nama":                   pegawai_data.get("nama", "").title(),
+                        "jabatan":                _jab_label,
                         "nomor_surat_tugas":      spd_data.get("nomor_spd", "-").replace("-O", "-F"),
                         "tempat_kegiatan":        visum_data.get("tujuan", ""),
                         "tanggal_berangkat":      visum_data.get("tanggal_berangkat"),
@@ -392,7 +428,8 @@ with tab2:
                         "tanggal_ttd":            date.today(),
                         "ttd_mengetahui_jabatan": "Direktur Umum",
                         "ttd_mengetahui_nama":    dir_umum_nama,
-                        "nama_penerima":          pegawai_data.get("nama", "").upper(),
+                        "nama_penerima":          pegawai_data.get("nama", "").title(),
+                        "jabatan_penerima":       _jab_label,
                     }
                     pdf_bytes = generate_pernyataan_biaya(pb_data).read()
                     nama_file = f"Pernyataan_Biaya_{pegawai_data.get('nama','').replace(' ','_')}.pdf"

@@ -198,7 +198,40 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 41. Pembuka Surat Tugas PDF: format baru → "surat dari [dari], dengan Nomor Surat [nomor], perihal [perihal]"
 42. Helper `_build_pembuka()` — fleksibel, skip bagian yang kosong
 
+### ✅ Sudah selesai (per sesi 2026-04-01, sesi lanjutan):
+
+**Revisi PDF Surat Tugas (`pages/2_visum.py`, `utils/pdf_generator.py`):**
+43. Gap setelah tabel peserta diperbesar (0.45→0.65cm)
+44. "Tujuan Perjalanan Dinas" word-wrap dengan hanging indent di `val_x`
+45. `fmt_waktu_surat_tugas()` — format tanggal cerdas: 1 hari, rentang 1 bulan, lintas bulan — pakai nama hari Indonesia
+46. Nama, jabatan, divisi peserta: title case
+47. Kolom Jabatan: format abbreviasi `Man/Spv/Staf - [nama]` (strip prefix "Divisi"/"Sub Divisi")
+48. Kolom Divisi: Manajer→divisi sendiri, Spv/Staf→divisi parent, Direksi/Dewas→"-"
+49. Dirut dikecualikan dari daftar peserta Surat Tugas
+
+**Revisi PDF SPD (`pages/2_visum.py`, `utils/pdf_generator.py`):**
+50. Warna teks per kategori (bukan background): Direksi=biru, Adm/Teknik hijau/ungu, Dewas=oranye
+51. `SPD_ROW_COLORS` dict: `{1: biru, 2: hijau, 3: ungu, 4: oranye}` (5=hitam/default)
+52. Peserta warna ikut kategorinya masing-masing (mapping via `struktur_rkap` + `bidang`)
+53. Peserta diurutkan: Dirut selalu pertama, lalu per kategori, lalu level tertinggi ke bawah
+54. Kolom jabatan peserta: text wrap otomatis (dynamic row height via `Paragraph.wrap()`)
+
+**Revisi PDF SPPD Tanda Terima (`utils/pdf_generator.py`, `pages/3_sppd.py`):**
+55. Garis horizontal setelah "Tanggal..." di `_draw_tanda_terima`
+56. TTD kanan: "Yang Menerima," sejajar "Mengetahui/Menyetujui :"
+57. `jabatan_penerima` tampil di TTD kanan (format: "Manajer/Supervisor/Staf [nama divisi] PTMB")
+58. `format_jabatan_sppd_penerima()` di `3_sppd.py` — full words, Manajer→parent divisi, Spv/Staf→divisi sendiri
+59. Bug fix session state: nama yang dipilih tidak reset saat status sppd berubah
+
+**Revisi PDF Pernyataan Biaya Riil (`utils/pdf_generator.py`, `pages/3_sppd.py`):**
+60. Nama penerima: title case
+61. `dir_umum_nama` diambil dari DB (`get_pegawai_by_jabatan_nama("Direktur Umum")`), fallback "Direktur Umum" — `.title()`
+62. TTD kanan: `jabatan_penerima` tampil di bawah "Penerima SPPD,"
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
+
+#### Bug diketahui — perlu diperbaiki sesi berikutnya:
+- **Pernyataan Biaya: nama Direktur Umum masih tampil "Direktur Umum"** (fallback string) padahal data pegawai sudah ada di DB. Kemungkinan `get_pegawai_by_jabatan_nama("Direktur Umum")` return `None` — perlu dicek nama jabatan exak di tabel `jabatan`.
 
 #### Setelah Testing (saat ini sedang testing di tim sekper):
 1. **Fitur Laporan/Reporting** (`pages/6_laporan.py`) — halaman baru:

@@ -77,6 +77,8 @@ BULAN_SINGKAT = {
     7:"Jul", 8:"Agu", 9:"Sep", 10:"Okt", 11:"Nov", 12:"Des"
 }
 
+HARI_ID = {0:"Senin", 1:"Selasa", 2:"Rabu", 3:"Kamis", 4:"Jumat", 5:"Sabtu", 6:"Minggu"}
+
 def fmt_tgl_short(d) -> str:
     """date → '10-Feb-2026'"""
     if not d: return ""
@@ -84,6 +86,30 @@ def fmt_tgl_short(d) -> str:
         try: d = datetime.strptime(d, "%Y-%m-%d").date()
         except: return d
     return f"{d.day:02d}-{BULAN_SINGKAT[d.month]}-{d.year}"
+
+def fmt_waktu_surat_tugas(tgl_berangkat, tgl_kembali) -> str:
+    """Format waktu pelaksanaan untuk Surat Tugas.
+    - 1 hari  : "Senin, 5 Januari 2026"
+    - Bulan sama: "Senin - Rabu, 5 - 7 Januari 2026"
+    - Beda bulan: "Senin, 5 Januari 2026 - Rabu, 7 Februari 2026"
+    """
+    if isinstance(tgl_berangkat, str):
+        try: tgl_berangkat = datetime.strptime(tgl_berangkat, "%Y-%m-%d").date()
+        except: return str(tgl_berangkat)
+    if isinstance(tgl_kembali, str):
+        try: tgl_kembali = datetime.strptime(tgl_kembali, "%Y-%m-%d").date()
+        except: return str(tgl_kembali)
+    hari_brkt = HARI_ID[tgl_berangkat.weekday()]
+    hari_kmbl = HARI_ID[tgl_kembali.weekday()]
+    if tgl_berangkat == tgl_kembali:
+        return f"{hari_brkt}, {fmt_tgl(tgl_berangkat)}"
+    elif tgl_berangkat.month == tgl_kembali.month and tgl_berangkat.year == tgl_kembali.year:
+        return (f"{hari_brkt} - {hari_kmbl}, "
+                f"{tgl_berangkat.day} - {tgl_kembali.day} "
+                f"{BULAN_ID[tgl_berangkat.month]} {tgl_berangkat.year}")
+    else:
+        return f"{hari_brkt}, {fmt_tgl(tgl_berangkat)} - {hari_kmbl}, {fmt_tgl(tgl_kembali)}"
+
 
 def fmt_rp(n) -> str:
     """angka → 'Rp 19,997,900'"""
@@ -288,7 +314,7 @@ def _surat_tugas_halaman(c, data, page):
     # Paragraf pembuka
     pembuka = f"Memperhatikan {data.get('pembuka','')}, Direktur Utama Perumda Tirta Manuntung Balikpapan,"
     y = draw_wrapped(c, pembuka, MARGIN_L, y, CONTENT_W)
-    y -= 0.5 * cm
+    y -= 0.75 * cm
 
     c.setFont(FONT_BOLD, FONT_SIZE)
     c.drawCentredString(PAGE_W/2, y, "MEMERINTAHKAN :")
@@ -296,7 +322,7 @@ def _surat_tugas_halaman(c, data, page):
 
     # Tabel peserta
     y = _tabel_peserta_st(c, data.get("peserta", []), y)
-    y -= 0.45 * cm
+    y -= 0.75 * cm
 
     # Detail perjalanan
     lbl_w = 5.5 * cm
@@ -309,13 +335,31 @@ def _surat_tugas_halaman(c, data, page):
         ("Waktu Pelaksanaan",        data.get("waktu","")),
         ("Tempat Kegiatan",          data.get("tempat","")),
     ]
+    line_gap = 0.45 * cm
     for lbl, val in rows:
         c.setFont(FONT_NORMAL, FONT_SIZE)
         c.drawString(MARGIN_L, y, lbl)
         c.drawString(MARGIN_L + lbl_w, y, ":")
         c.setFont(FONT_BOLD, FONT_SIZE)
-        c.drawString(val_x, y, val)
-        y -= 0.5 * cm
+        if lbl == "Tujuan Perjalanan Dinas":
+            # wrap + hanging indent: semua baris mulai di val_x
+            words = val.split()
+            lines, cur = [], []
+            for word in words:
+                test = " ".join(cur + [word])
+                if c.stringWidth(test, FONT_BOLD, FONT_SIZE) <= val_w:
+                    cur.append(word)
+                else:
+                    lines.append(" ".join(cur))
+                    cur = [word]
+            if cur:
+                lines.append(" ".join(cur))
+            for k, line in enumerate(lines):
+                c.drawString(val_x, y - k * line_gap, line)
+            y -= max(0.5 * cm, len(lines) * line_gap + 0.05 * cm)
+        else:
+            c.drawString(val_x, y, val)
+            y -= 0.5 * cm
 
     # Target kinerja (2 baris label)
     c.setFont(FONT_NORMAL, FONT_SIZE)
@@ -376,7 +420,7 @@ def _tabel_peserta_st(c, peserta, y):
     cw_no   = 0.8  * cm
     cw_nama = 4.5  * cm
     cw_nik  = 2.5  * cm
-    cw_jab  = 4.2  * cm
+    cw_jab  = 5.5  * cm
     cw_div  = CONTENT_W - cw_no - cw_nama - cw_nik - cw_jab  # sisa → divisi
     cw = [cw_no, cw_nama, cw_nik, cw_jab, cw_div]
 
@@ -527,6 +571,14 @@ def generate_spd(data: dict) -> BytesIO:
     return buf
 
 
+SPD_ROW_COLORS = {
+    1: colors.HexColor("#1155CC"),  # Direksi — biru (link aktif)
+    2: colors.HexColor("#2D7A2D"),  # Administrasi/Keuangan — hijau
+    3: colors.HexColor("#7030A0"),  # Teknik — ungu
+    4: colors.HexColor("#C55A11"),  # Dewan Pengawas — orange
+    # 5 Bantuan — hitam (default)
+}
+
 def _draw_spd(c, data):
     y = PAGE_H - MARGIN_T
 
@@ -553,7 +605,7 @@ def _draw_spd(c, data):
     cw_top = [1.2*cm, 10.3*cm, 4.5*cm, 2.5*cm]
     rh = 0.65 * cm
 
-    def tbl_row(vals, bold=False, align_last_right=True, header=False):
+    def tbl_row(vals, bold=False, align_last_right=True, header=False, txt_color=None):
         nonlocal y
         x = MARGIN_L
         for k, (w, v) in enumerate(zip(cw_top, vals)):
@@ -561,7 +613,7 @@ def _draw_spd(c, data):
             c.setStrokeColor(colors.black)
             c.setLineWidth(0.4)
             c.rect(x, y - rh, w, rh, fill=1)
-            c.setFillColor(colors.black)
+            c.setFillColor(txt_color if txt_color and not header else colors.black)
             c.setFont(FONT_BOLD if bold else FONT_NORMAL, FONT_SIZE)
             if header:
                 c.drawCentredString(x + w/2, y - rh + 0.18*cm, str(v))
@@ -580,17 +632,21 @@ def _draw_spd(c, data):
     # Row judul lokasi (merge-style, no border kiri-kanan-dalam)
     c.setFont(FONT_BOLD, FONT_SIZE)
     tbl_w = sum(cw_top)
+    c.setFillColor(colors.white)
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.4)
-    c.rect(MARGIN_L, y - rh, tbl_w, rh)
+    c.rect(MARGIN_L, y - rh, tbl_w, rh, fill=1)
+    c.setFillColor(colors.black)
     c.drawString(MARGIN_L + 0.3*cm, y - rh + 0.18*cm,
                  data.get("lokasi_label", "Biaya Perjalanan Dinas"))
     y -= rh
 
-    # Rows kategori
+    # Rows kategori — warnai teks sesuai nomor kategori
     for kat in data.get("kategori", []):
         total_str = fmt_rp(kat.get("total", 0)) if kat.get("total", 0) else "---"
-        tbl_row([str(kat.get("no","")), kat.get("uraian",""), total_str, kat.get("kode","")])
+        txt_color = SPD_ROW_COLORS.get(kat.get("no"))
+        tbl_row([str(kat.get("no","")), kat.get("uraian",""), total_str, kat.get("kode","")],
+                txt_color=txt_color)
 
     # Row grand total — No+Uraian di-merge, teks "JUMLAH"
     merged_top = cw_top[0] + cw_top[1]
@@ -626,31 +682,50 @@ def _draw_spd(c, data):
     # ── TABEL BAWAH: No | Nama | Jabatan | Biaya SPPD  → total = CONTENT_W
     cw_bot = [1.0*cm, 5.5*cm, 7.5*cm, 4.5*cm]
 
-    def tbl_bot_row(vals, bold=False, header=False):
+    def tbl_bot_row(vals, bold=False, header=False, txt_color=None):
         nonlocal y
+        fnt = FONT_BOLD if bold else FONT_NORMAL
+        txt_c = txt_color if txt_color and not header else colors.black
+        # Hitung tinggi row dinamis dari kolom jabatan (k=2)
+        jab_style = ParagraphStyle("jab_spd", fontName=fnt, fontSize=FONT_SIZE,
+                                   leading=12, textColor=txt_c)
+        if not header and len(vals) > 2:
+            p_jab = Paragraph(str(vals[2]), jab_style)
+            _, h_jab = p_jab.wrap(cw_bot[2] - 0.4*cm, 200)
+            row_h = max(rh, h_jab + 0.2*cm)
+        else:
+            row_h = rh
         x = MARGIN_L
         for k, (w, v) in enumerate(zip(cw_bot, vals)):
             c.setFillColor(colors.white)
             c.setStrokeColor(colors.black)
             c.setLineWidth(0.4)
-            c.rect(x, y - rh, w, rh, fill=1)
-            c.setFillColor(colors.black)
-            c.setFont(FONT_BOLD if bold else FONT_NORMAL, FONT_SIZE)
+            c.rect(x, y - row_h, w, row_h, fill=1)
+            c.setFillColor(txt_c)
+            c.setFont(fnt, FONT_SIZE)
             if header:
-                c.drawCentredString(x + w/2, y - rh + 0.18*cm, str(v))
+                c.drawCentredString(x + w/2, y - row_h + 0.18*cm, str(v))
+            elif k == 2:  # Jabatan — Paragraph wrap, vertikal center
+                p = Paragraph(str(v), jab_style)
+                _, h_pg = p.wrap(w - 0.4*cm, row_h)
+                draw_y = (y - row_h) + (row_h - h_pg) / 2
+                p.drawOn(c, x + 0.2*cm, draw_y)
+                c.setFillColor(txt_c)  # reset setelah Paragraph
             elif k == 0:
-                c.drawCentredString(x + w/2, y - rh + 0.18*cm, str(v))
+                c.drawCentredString(x + w/2, y - row_h/2 - 0.15*cm, str(v))
             elif k == 3:
-                c.drawRightString(x + w - 0.2*cm, y - rh + 0.18*cm, str(v))
+                c.drawRightString(x + w - 0.2*cm, y - row_h/2 - 0.15*cm, str(v))
             else:
-                c.drawString(x + 0.2*cm, y - rh + 0.18*cm, str(v))
+                c.drawString(x + 0.2*cm, y - row_h/2 - 0.15*cm, str(v))
             x += w
-        y -= rh
+        y -= row_h
 
     tbl_bot_row(["No", "Nama", "Jabatan", "Biaya SPPD"], bold=True, header=True)
     for p in data.get("peserta", []):
+        txt_color = SPD_ROW_COLORS.get(p.get("kategori_no"))
         tbl_bot_row([str(p.get("no","")), p.get("nama",""),
-                     p.get("jabatan",""), fmt_rp(p.get("biaya",0))])
+                     p.get("jabatan",""), fmt_rp(p.get("biaya",0))],
+                    txt_color=txt_color)
     # Row jumlah — No+Nama+Jabatan di-merge, teks "JUMLAH"
     total_peserta = sum(p.get("biaya", 0) for p in data.get("peserta", []))
     merged_bot = cw_bot[0] + cw_bot[1] + cw_bot[2]
@@ -1219,7 +1294,12 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
     y -= 0.42 * cm
     c.drawString(MARGIN_L, y,
         f"Tanggal {tgl_b} s/d {tgl_k}. (\u00b1 {lama} hari)")
-    y -= 0.65 * cm
+    y -= 0.38 * cm
+    c.setLineWidth(2.0)
+    c.line(MARGIN_L, y, PAGE_W - MARGIN_R, y)
+    c.setLineWidth(0.5)
+    c.line(MARGIN_L, y - 0.12*cm, PAGE_W - MARGIN_R, y - 0.12*cm)
+    y -= 0.8 * cm
 
     # ── BARIS ITEM ──
     # Layout: no | keterangan | qty x satuan = | Rp | total
@@ -1315,12 +1395,14 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
     c.drawCentredString(ctr_rght, y, f"Balikpapan, {tgl_str}")
     y -= 0.42 * cm
 
-    # "Mengetahui/Menyetujui :" sejajar dengan jabatan penerima
+    # Kiri: Mengetahui | Kanan: Yang Menerima,
     c.drawCentredString(ctr_left, y, "Mengetahui/Menyetujui :")
-    c.drawCentredString(ctr_rght, y, data.get("jabatan_penerima", ""))
+    c.drawCentredString(ctr_rght, y, "Yang Menerima,")
     y -= 0.42 * cm
 
+    # Kiri: Perumda... | Kanan: jabatan penerima
     c.drawCentredString(ctr_left, y, "Perumda Tirta Manuntung Balikpapan")
+    c.drawCentredString(ctr_rght, y, data.get("jabatan_penerima", ""))
     y -= 0.42 * cm
     c.drawCentredString(ctr_left, y, "Direktur Utama,")
     y -= 2.0 * cm
@@ -1516,6 +1598,7 @@ def _draw_pernyataan(c, data):
     c.drawCentredString(cx_rght, y, "Penerima SPPD,")
     y -= 0.4*cm
     c.drawCentredString(cx_left, y, data.get("ttd_mengetahui_jabatan",""))
+    c.drawCentredString(cx_rght, y, data.get("jabatan_penerima",""))
     y -= 2.5*cm
 
     for cx, nama in [

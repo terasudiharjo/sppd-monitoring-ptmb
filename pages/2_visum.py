@@ -6,7 +6,7 @@ from utils.database import (
     auto_buat_semua_sppd, sync_sppd_peserta, cancel_semua_sppd_visum
 )
 from utils.pdf_generator import (
-    generate_visum, generate_surat_tugas, generate_spd, fmt_tgl_short
+    generate_visum, generate_surat_tugas, generate_spd, fmt_tgl_short, fmt_waktu_surat_tugas
 )
 from supabase import create_client
 from dotenv import load_dotenv
@@ -58,6 +58,46 @@ def format_jabatan_divisi(jabatan_nama, divisi_nama):
         return f"Staf - {div}"
     else:
         return jabatan_nama.title()
+
+def _strip_div_prefix(nama: str) -> str:
+    return re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip().title()
+
+def get_divisi_label_surat_tugas(jabatan_nama: str, divisi_obj: dict, divisi_map: dict) -> str:
+    """Kolom divisi di tabel Surat Tugas.
+    - Spv / Staf / Pelaksana → nama divisi PARENT (strip prefix + title)
+    - Manajer               → nama divisi sendiri (strip prefix + title)
+    - Direksi / Dewas / dll → '-'
+    """
+    if not divisi_obj or not isinstance(divisi_obj, dict):
+        return "-"
+    jab = jabatan_nama.lower()
+    if "supervisor" in jab or "staf" in jab or "pelaksana" in jab:
+        parent_id = divisi_obj.get("parent_id")
+        if parent_id and parent_id in divisi_map:
+            return _strip_div_prefix(divisi_map[parent_id].get("nama", "-"))
+        # fallback: divisi sendiri kalau parent tidak ditemukan
+        return _strip_div_prefix(divisi_obj.get("nama", "-"))
+    elif "manajer" in jab or "manager" in jab:
+        return _strip_div_prefix(divisi_obj.get("nama", "-"))
+    else:
+        return "-"
+
+def _struktur_ke_kategori_spd(struktur: str, bidang: str = "") -> int:
+    """Petakan struktur_rkap + bidang divisi ke nomor kategori SPD (untuk warna teks).
+    Nilai struktur_rkap di DB: DIRUT, DIRUM, DIRTEK, DIROPS,
+                                DEWAS_KETUA, DEWAS_ANGGOTA_1/2,
+                                MANAJER, SUPERVISOR, STAF_PELAKSANA
+    """
+    s = (struktur or "").upper()
+    b = (bidang or "").lower()
+    if s in ("DIRUT", "DIRUM", "DIRTEK", "DIROPS"):
+        return 1  # Direksi — biru
+    elif "DEWAS" in s:
+        return 4  # Dewan Pengawas — orange
+    elif s in ("MANAJER", "SUPERVISOR", "STAF_PELAKSANA"):
+        return 3 if "teknik" in b else 2  # Teknik=ungu, Administrasi=hijau
+    else:
+        return 2  # default administrasi/keuangan
 
 def _build_pembuka(disp: dict) -> str:
     """Bangun kalimat pembuka surat tugas dari data disposisi."""
@@ -402,6 +442,7 @@ with tab3:
                 # ── Daftar Peserta ──
                 pegawai_all = get_all_pegawai()
                 pegawai_map = {p["id"]: p for p in pegawai_all}
+                divisi_map_local = {p["divisi"]["id"]: p["divisi"] for p in pegawai_all if p.get("divisi") and p["divisi"].get("id")}
                 peserta_ids = v.get("peserta") or []
 
                 st.markdown("#### 👥 Peserta Perjalanan")
@@ -541,10 +582,32 @@ with tab3:
                             if v.get("disposisi") and (v["disposisi"][0].get("nomor") or v["disposisi"][0].get("perihal"))
                             else f"Perihal {v.get('keperluan','')}"
                         ),
-                            "peserta":  peserta_pdf,
+                            "peserta":  [
+                                {
+                                    "nama":    pegawai_map[pid]["nama"].title(),
+                                    "nip":     pegawai_map[pid].get("nip", "-"),
+                                    "jabatan": format_jabatan_divisi(
+                                        (pegawai_map[pid].get("jabatan") or {}).get("nama", "-"),
+                                        (pegawai_map[pid].get("divisi") or {}).get("nama", "-"),
+                                    ),
+                                    "divisi":  get_divisi_label_surat_tugas(
+                                        (pegawai_map[pid].get("jabatan") or {}).get("nama", "-"),
+                                        pegawai_map[pid].get("divisi"),
+                                        divisi_map_local,
+                                    ),
+                                }
+                                for pid in sorted(
+                                    [pid for pid in peserta_ids if pid in pegawai_map
+                                     and (pegawai_map[pid].get("jabatan") or {}).get("struktur_rkap") != "DIRUT"],
+                                    key=lambda pid: (
+                                        -(pegawai_map[pid].get("jabatan") or {}).get("level", 0),
+                                        pegawai_map[pid].get("nip", "")
+                                    )
+                                )
+                            ],
                             "tujuan":   v.get("keperluan", ""),
                             "durasi":   v["lama_hari"],
-                            "waktu":    f"{fmt_tgl_short(v['tanggal_berangkat'])} s/d {fmt_tgl_short(v['tanggal_kembali'])}",
+                            "waktu":    fmt_waktu_surat_tugas(v['tanggal_berangkat'], v['tanggal_kembali']),
                             "tempat":   v["tujuan"],
                             "target":   "Wajib Untuk Menyerahkan Laporan Perjalanan Dinas Kepada Direktur Utama Perumda Tirta Manuntung Balikpapan.",
                             "ttd_nama": "Dr. SAHARUDDIN, M.M.",
@@ -575,7 +638,7 @@ with tab3:
                             ]
                             # Ambil daftar peserta + biaya dari sppd
                             res_sppd_pdf = db.table("sppd")\
-                                .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan(nama, level))")\
+                                .select("*, pegawai!sppd_pegawai_id_fkey(nama, divisi(id, nama, parent_id, bidang), jabatan(nama, level, struktur_rkap))")\
                                 .eq("spd_id", spd_pdf["id"])\
                                 .neq("status", "cancelled")\
                                 .execute()
@@ -583,15 +646,32 @@ with tab3:
                             for sp in res_sppd_pdf.data:
                                 peg = sp.get("pegawai") or {}
                                 jab = peg.get("jabatan") or {}
+                                div = peg.get("divisi") or {}
+                                # Hitung bidang (cek parent jika divisi sendiri tidak punya bidang)
+                                bidang_raw = div.get("bidang") or divisi_map_local.get(div.get("parent_id"), {}).get("bidang")
+                                bidang_resolved = bidang_raw.title() if bidang_raw else ""
                                 peserta_spd_raw.append({
-                                    "nama":    peg.get("nama", "-"),
-                                    "jabatan": jab.get("nama", "-"),
-                                    "level":   jab.get("level", 0),
-                                    "biaya":   sp.get("total_biaya") or sp.get("subtotal_uang_saku") or 0,
+                                    "nama":           peg.get("nama", "-"),
+                                    "jabatan":        jab.get("nama", "-"),
+                                    "divisi_nama":    div.get("nama", "-"),
+                                    "level":          jab.get("level", 0),
+                                    "struktur_rkap":  jab.get("struktur_rkap", ""),
+                                    "bidang":         bidang_resolved,
+                                    "biaya":          sp.get("total_biaya") or sp.get("subtotal_uang_saku") or 0,
                                 })
-                            peserta_spd_raw.sort(key=lambda x: -x["level"])
+                            peserta_spd_raw.sort(key=lambda x: (
+                                _struktur_ke_kategori_spd(x["struktur_rkap"], x["bidang"]),  # 1=Direksi … 5=Bantuan
+                                0 if x["struktur_rkap"] == "DIRUT" else 1,                   # Dirut selalu pertama
+                                -x["level"],                                                  # dalam kategori: level tertinggi dulu
+                            ))
                             peserta_spd = [
-                                {"no": i, "nama": p["nama"], "jabatan": p["jabatan"], "biaya": p["biaya"]}
+                                {
+                                    "no":          i,
+                                    "nama":        p["nama"].title(),
+                                    "jabatan":     format_jabatan_divisi(p["jabatan"], p["divisi_nama"]),
+                                    "biaya":       p["biaya"],
+                                    "kategori_no": _struktur_ke_kategori_spd(p["struktur_rkap"], p["bidang"]),
+                                }
                                 for i, p in enumerate(peserta_spd_raw, 1)
                             ]
                             data_spd = {
