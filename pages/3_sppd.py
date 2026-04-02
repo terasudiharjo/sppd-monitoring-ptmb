@@ -408,7 +408,7 @@ with tab2:
             # ── Tombol Pernyataan Biaya Riil ──
             with col_pdf3:
                 if s["status"] in ["realisasi", "completed"]:
-                    dir_umum = get_pegawai_by_jabatan_nama("Direktur Umum")
+                    dir_umum = get_pegawai_by_jabatan_nama("DIREKTUR BIDANG UMUM")
                     dir_umum_nama = dir_umum["nama"].title() if dir_umum else "Direktur Umum"
                     pb_data = {
                         "nomor_surat":            spd_data.get("nomor_spd", "-").replace("-O", ""),

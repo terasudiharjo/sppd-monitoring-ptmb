@@ -228,21 +228,28 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 61. `dir_umum_nama` diambil dari DB (`get_pegawai_by_jabatan_nama("Direktur Umum")`), fallback "Direktur Umum" — `.title()`
 62. TTD kanan: `jabatan_penerima` tampil di bawah "Penerima SPPD,"
 
+### ✅ Sudah selesai (per sesi 2026-04-02):
+
+**Bug Fix:**
+63. `3_sppd.py:411`: fix `get_pegawai_by_jabatan_nama("Direktur Umum")` → `"DIREKTUR BIDANG UMUM"` — nama jabatan di DB adalah uppercase full name, bukan "Direktur Umum". Sekarang nama Direktur Umum tampil benar di PDF Pernyataan Biaya.
+
+**Script:**
+64. `setup/clean_db.py` — script bersihkan data transaksi (DRY_RUN=True default):
+    - Hapus: sppd_biaya_lain → sppd_trip_detail → sppd → spd → visum (urut child→parent)
+    - Reset: rkap.anggaran_terpakai=0, anggaran_sisa=anggaran_awal
+    - Ada verifikasi akhir (cek semua tabel = 0 record)
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
-#### Bug diketahui — perlu diperbaiki sesi berikutnya:
-- **Pernyataan Biaya: nama Direktur Umum masih tampil "Direktur Umum"** (fallback string) padahal data pegawai sudah ada di DB. Kemungkinan `get_pegawai_by_jabatan_nama("Direktur Umum")` return `None` — perlu dicek nama jabatan exak di tabel `jabatan`.
+#### Sesi berikutnya — langkah pertama:
+- **Test DRY RUN clean_db**: `python setup/clean_db.py` — cek jumlah data yang akan dihapus, pastikan output sesuai
 
 #### Setelah Testing (saat ini sedang testing di tim sekper):
 1. **Fitur Laporan/Reporting** (`pages/6_laporan.py`) — halaman baru:
    - Rekap jumlah perjalanan dinas per bulan & semester (trip, orang, total biaya)
    - Laporan realisasi per bulan & semester (format tabel seperti `data/realisasi_sppd_2026.csv`)
    - Bisa di-print / export PDF
-2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
-3. **Script clean DB** (`setup/clean_db.py`) — untuk reset transaksi saat go-live production:
-   - Hapus: visum, sppd, spd, sppd_biaya_lain, sppd_trip_detail
-   - Reset: rkap.anggaran_terpakai=0, anggaran_sisa=anggaran_awal
-   - Jangan hapus: pegawai, jabatan, divisi, lokasi_sppd, rule_sppd, rkap
+2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data (tunggu testing selesai)
 
 #### Flow Go-Live (setelah testing selesai):
 ```
