@@ -242,41 +242,41 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 ### ✅ Sudah selesai (per sesi 2026-04-06):
 
 **Testing & Script Go-Live:**
-65. `setup/clean_db.py` — DRY RUN berhasil: 31 visum, 94 sppd, 31 spd siap dihapus; fix encoding `→` → `->` untuk Windows terminal
-66. `setup/import_histori_2026.py` — script import BARU untuk CSV `histori sppd 2026.csv` (menggantikan `import_realisasi_2026.py`):
+65. `setup/clean_db.py` — DRY RUN berhasil: 31 visum, 94 sppd, 31 spd siap dihapus; fix encoding `->` untuk Windows terminal
+66. `setup/import_histori_2026.py` — script import BARU untuk CSV `histori sppd 2026.csv`:
     - Kolom nomor langsung dari CSV (`Nomor Visum Lengkap`, `Nomor SPD Lengkap`) — tidak ada prefix HIST-
-    - Group by `Nomor Visum Lengkap` → 1 visum + 1 spd per group
+    - Group by `Nomor Visum Lengkap` → 1 visum + 1 spd per group; handle duplicate SPD nomor (reuse spd_id)
     - Format tanggal `d/m/yyyy` (Indonesia)
     - `Biaya Lain-lain` > 0 → insert ke `sppd_biaya_lain`
-    - DRY RUN: 24 visum, 52 sppd, semua nama resolve
-67. `setup/import_pkwt_2026.py` — script import 162 pegawai PKWT dari `DUK_PKWT_2026.csv`:
+67. `setup/import_pkwt_2026.py` — script import 161 pegawai PKWT dari `DUK_PKWT_2026.csv`:
     - Jabatan: CALON PEGAWAI (`id: 6d8c4b99-...`)
-    - 22 skip (NIK sudah ada di DB), 162 siap diimport
-    - Mapping divisi otomatis dari nama bebas CSV → divisi_id DB (100% resolve)
     - `normalize_divisi()`: handle typo, variasi singkatan, bare `DISTRIBUSI X`, PMA=Pembaca Meter, dll.
-    - DRY RUN: 0 divisi tidak dikenal
+    - 1 skip: NURWAHYU ISLAMIATI (NIK duplikat 2531) — perlu tambah manual
+68. RKAP bantuan: `resolve_kategori_rkap()` fix — BANTUAN → `bantuan_sppd` / `bantuan_sppd_luar_negeri` (by lokasi_id)
+69. RKAP Monitor: label "Bantuan SPPD" dan "Bantuan SPPD Luar Negeri" (tanpa "(PKWT)")
+
+**GO-LIVE SUDAH DIEKSEKUSI (2026-04-06):**
+```
+1. clean_db.py (DRY_RUN=False)              -> semua transaksi lama dihapus, RKAP di-reset
+2. import_histori_2026.py (DRY_RUN=False)   -> 24 visum + 52 sppd Jan-Mar 2026 masuk DB
+3. deduct_rkap_historis.py (DRY_RUN=False)  -> 52 sppd di-deduct ke 21 RKAP row
+4. import_pkwt_2026.py (DRY_RUN=False)      -> 161 pegawai PKWT masuk DB
+```
+Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
-#### Flow Go-Live (siap dieksekusi, semua dry run sudah OK):
-```
-1. python setup/clean_db.py              (DRY_RUN=False) — hapus data transaksi lama
-2. python setup/import_histori_2026.py   (DRY_RUN=False) — import histori Jan-Mar 2026
-3. python setup/deduct_rkap_historis.py  (DRY_RUN=False) — deduct RKAP dari histori
-4. python setup/import_pkwt_2026.py      (DRY_RUN=False) — import 162 pegawai PKWT
-5. App live ✅
-```
-
-#### Setelah Go-Live:
+#### Prioritas:
 1. **Fitur Laporan/Reporting** (`pages/6_laporan.py`) — halaman baru:
    - Rekap jumlah perjalanan dinas per bulan & semester (trip, orang, total biaya)
    - Laporan realisasi per bulan & semester (format tabel seperti CSV historis)
    - Bisa di-print / export PDF
-2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
-3. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter), rencana integrasi ke sistem penomoran sekper yang baru
 
 #### Opsional:
-- **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
+2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
+3. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter)
+4. **Manual**: tambah NURWAHYU ISLAMIATI ke pegawai (NIK perlu dikonfirmasi, duplikat 2531 di CSV)
+5. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
 
 ---
 
