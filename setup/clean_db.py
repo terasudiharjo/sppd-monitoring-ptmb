@@ -60,7 +60,7 @@ def main():
         print(f"    - Hapus {counts['sppd']} sppd")
         print(f"    - Hapus {counts['spd']} spd")
         print(f"    - Hapus {counts['visum']} visum")
-        print(f"    - Reset {len(rkap_rows)} baris rkap → anggaran_terpakai=0, anggaran_sisa=anggaran_awal")
+        print(f"    - Reset {len(rkap_rows)} baris rkap -> anggaran_terpakai=0, anggaran_sisa=anggaran_awal")
         print("\nGanti DRY_RUN = False untuk eksekusi sungguhan.")
         return
 
@@ -96,7 +96,7 @@ def main():
             "anggaran_terpakai": 0,
             "anggaran_sisa": anggaran_awal,
         }).eq("id", r["id"]).execute()
-        print(f"  [OK] {r.get('kategori_jabatan', '?'):30s} bln {r.get('bulan', '?'):2} → sisa = Rp {anggaran_awal:,.0f}")
+        print(f"  [OK] {r.get('kategori_jabatan', '?'):30s} bln {r.get('bulan', '?'):2} -> sisa = Rp {anggaran_awal:,.0f}")
         reset_ok += 1
 
     # ── Verifikasi ──
