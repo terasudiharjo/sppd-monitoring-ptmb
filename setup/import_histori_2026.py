@@ -223,8 +223,13 @@ def main():
                 "grand_total" : total_spd,
                 "status"      : "completed",
             }
-            res_s  = db.table("spd").insert(spd_data).execute()
-            spd_id = res_s.data[0]['id']
+            existing_spd = db.table("spd").select("id").eq("nomor_spd", nomor_spd).execute()
+            if existing_spd.data:
+                spd_id = existing_spd.data[0]['id']
+                print(f"  [i] SPD '{nomor_spd}' sudah ada, reuse spd_id={spd_id}")
+            else:
+                res_s  = db.table("spd").insert(spd_data).execute()
+                spd_id = res_s.data[0]['id']
 
             # 3. Insert sppd per peserta
             for _, r in group.iterrows():
@@ -239,6 +244,7 @@ def main():
                 total_b    = parse_uang(r['Total'])
 
                 sppd_data = {
+                    "nomor_sppd"             : nomor_spd,
                     "pegawai_id"             : r['pegawai_id'],
                     "visum_id"               : visum_id,
                     "spd_id"                 : spd_id,

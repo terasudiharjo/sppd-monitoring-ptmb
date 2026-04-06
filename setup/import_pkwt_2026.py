@@ -19,7 +19,7 @@ from supabase import create_client
 load_dotenv()
 
 # --- KONFIGURASI ---
-DRY_RUN    = True
+DRY_RUN    = False  # True = preview saja, tidak insert ke DB
 CSV_PATH   = os.path.join(os.path.dirname(__file__), '..', 'data', 'DUK_PKWT_2026.csv')
 JABATAN_ID = "6d8c4b99-7199-4c8e-80a1-11d54464823b"  # CALON PEGAWAI
 

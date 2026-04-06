@@ -26,7 +26,7 @@ from supabase import create_client
 
 load_dotenv()
 
-DRY_RUN = True  # Ganti False untuk eksekusi sungguhan
+DRY_RUN = False  # Ganti False untuk eksekusi sungguhan
 
 def get_db():
     return create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
