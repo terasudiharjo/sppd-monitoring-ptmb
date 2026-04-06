@@ -295,14 +295,18 @@ def hitung_uang_saku(rule: dict, total_hari: int) -> dict:
         "subtotal": subtotal
     }
 
-def resolve_kategori_rkap(struktur_rkap: str, bidang_resolved: str) -> str:
-    """Mapping struktur_rkap + bidang → kategori_jabatan di tabel RKAP."""
+LOKASI_LN_ID = "38663104-e5f5-473d-8227-640f025e595a"
+
+def resolve_kategori_rkap(struktur_rkap: str, bidang_resolved: str, lokasi_id: str = "") -> str:
+    """Mapping struktur_rkap + bidang + lokasi → kategori_jabatan di tabel RKAP."""
     if struktur_rkap == "MANAJER":
         return "ADM_MANAJER" if bidang_resolved == "Administrasi" else "TEKNIK_MANAJER"
     elif struktur_rkap == "SUPERVISOR":
         return "ADM_SUPERVISOR" if bidang_resolved == "Administrasi" else "TEKNIK_SUPERVISOR"
     elif struktur_rkap == "STAF_PELAKSANA":
         return "ADM_STAF_PELAKSANA" if bidang_resolved == "Administrasi" else "TEKNIK_STAF_PELAKSANA"
+    elif struktur_rkap == "BANTUAN":
+        return "bantuan_sppd_luar_negeri" if lokasi_id == LOKASI_LN_ID else "bantuan_sppd"
     elif struktur_rkap == "DEWAS_ANGGOTA":
         # Legacy fallback — kalau jabatan belum dipisah jadi DEWAS_ANGGOTA_1/2
         return "DEWAS_ANGGOTA_1"
@@ -385,7 +389,7 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
     # Cari rkap_id
     struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
     bidang = pegawai.get("bidang_resolved", "") or ""
-    kategori = resolve_kategori_rkap(struktur, bidang)
+    kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id)
     
     bulan_berangkat = date.fromisoformat(visum["tanggal_berangkat"]).month
     tahun_berangkat = date.fromisoformat(visum["tanggal_berangkat"]).year

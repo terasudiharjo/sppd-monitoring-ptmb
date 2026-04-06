@@ -319,7 +319,7 @@ with tab2:
                                 if not bidang and div.get("parent_id"):
                                     p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
                                     bidang = p["bidang"] if p else None
-                                kategori = resolve_kategori_rkap(struktur, bidang or "")
+                                kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
                                 tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])
@@ -499,7 +499,7 @@ with tab2:
                                 if not bidang and div.get("parent_id"):
                                     p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
                                     bidang = p["bidang"] if p else None
-                                kategori = resolve_kategori_rkap(struktur, bidang or "")
+                                kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
                                 tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])

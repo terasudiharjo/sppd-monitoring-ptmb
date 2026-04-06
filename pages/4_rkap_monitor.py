@@ -62,8 +62,8 @@ KATEGORI_DISPLAY = {
     "TEKNIK_MANAJER":            "Manajer Teknik",
     "TEKNIK_SUPERVISOR":         "Supervisor Teknik",
     "TEKNIK_STAF_PELAKSANA":     "Staf Teknik",
-    "bantuan_sppd":              "Bantuan (PKWT) Dalam",
-    "bantuan_sppd_luar_negeri":  "Bantuan (PKWT) Luar Negeri",
+    "bantuan_sppd":              "Bantuan SPPD",
+    "bantuan_sppd_luar_negeri":  "Bantuan SPPD Luar Negeri",
 }
 
 # ─────────────────────────────────────────────
