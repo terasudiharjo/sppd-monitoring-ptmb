@@ -278,25 +278,32 @@ def main():
     with tab2:
         st.subheader("Perbandingan Anggaran vs Realisasi")
 
+        # Warna per lokasi: anggaran = solid terang, terpakai = solid gelap (kontras jelas)
+        LOKASI_COLORS = {
+            "Dalam Kaltim": {"anggaran": "#64B5F6", "terpakai": "#1565C0"},  # biru muda vs biru tua
+            "Luar Kaltim":  {"anggaran": "#81C784", "terpakai": "#2E7D32"},  # hijau muda vs hijau tua
+            "Luar Negeri":  {"anggaran": "#FFB74D", "terpakai": "#E65100"},  # oranye muda vs oranye tua
+        }
+
         # Bar chart per kategori (grouped by lokasi)
         fig = go.Figure()
 
         for lok in df_agg["lokasi_label"].unique():
-            df_lok = df_agg[df_agg["lokasi_label"] == lok].copy()
+            df_lok  = df_agg[df_agg["lokasi_label"] == lok].copy()
+            colors  = LOKASI_COLORS.get(lok, {"anggaran": "rgba(150,150,150,0.4)", "terpakai": "rgba(80,80,80,1)"})
 
             fig.add_trace(go.Bar(
                 name=f"Anggaran – {lok}",
                 x=df_lok["kategori_display"],
                 y=df_lok["anggaran_awal"],
-                marker_color="steelblue",
-                opacity=0.6,
+                marker_color=colors["anggaran"],
                 legendgroup=lok,
             ))
             fig.add_trace(go.Bar(
                 name=f"Terpakai – {lok}",
                 x=df_lok["kategori_display"],
                 y=df_lok["anggaran_terpakai"],
-                marker_color="tomato",
+                marker_color=colors["terpakai"],
                 legendgroup=lok,
             ))
 
@@ -327,7 +334,12 @@ def main():
         st.subheader("Detail Realisasi per Bulan")
 
         # Pilih kategori spesifik
-        kat_options = sorted(df_raw["kategori_display"].unique().tolist())
+        kat_options = sorted(
+            df_raw["kategori_display"].unique().tolist(),
+            key=lambda d: KATEGORI_ORDER.index(
+                next((k for k, v in KATEGORI_DISPLAY.items() if v == d), d)
+            ) if any(v == d for v in KATEGORI_DISPLAY.values()) else 99
+        )
         kat_pilih = st.selectbox("Pilih Kategori", kat_options)
         lok_pilih = st.selectbox("Pilih Lokasi", list(LOKASI_LABEL.values()))
 

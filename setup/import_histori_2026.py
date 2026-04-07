@@ -23,6 +23,7 @@ import pandas as pd
 from datetime import datetime, date
 from dotenv import load_dotenv
 from supabase import create_client
+from utils.database import update_rekap_spd
 
 load_dotenv()
 
@@ -64,7 +65,7 @@ def parse_tgl(val):
     if pd.isna(val) or str(val).strip() in ('', 'nan'):
         return None
     s = str(val).strip()
-    for fmt in ("%d/%m/%Y", "%d-%b-%y", "%Y-%m-%d"):
+    for fmt in ("%d/%m/%Y", "%d-%m-%y", "%d-%b-%y", "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt).date()
         except:
@@ -130,7 +131,7 @@ def main():
 
     # Parse CSV
     print("\n[2] Parse CSV...")
-    df = pd.read_csv(CSV_PATH, skiprows=2)
+    df = pd.read_csv(CSV_PATH)
     df.columns = df.columns.str.strip()
     df = df.dropna(subset=['Nama']).copy()
     df['Nama'] = df['Nama'].astype(str).str.strip()
@@ -175,6 +176,9 @@ def main():
         tgl_b     = parse_tgl(group['Tgl Berangkat'].iloc[0])
         tgl_k     = parse_tgl(group['Tgl Kembali'].iloc[0])
         hari      = hitung_hari(tgl_b, tgl_k)
+        kota_tujuan = str(group['Kota Tujuan'].iloc[0]).strip()
+        if kota_tujuan.lower() in ('', 'nan'):
+            kota_tujuan = "-"
 
         peserta_list = [
             {"pegawai_id": r['pegawai_id'], "nama": r['nama_db']}
@@ -202,7 +206,7 @@ def main():
             visum_data = {
                 "nomor_visum"      : nomor_visum,
                 "tanggal_visum"    : str(tgl_b or date.today()),
-                "tujuan"           : "-",
+                "tujuan"           : kota_tujuan,
                 "tanggal_berangkat": str(tgl_b or date.today()),
                 "tanggal_kembali"  : str(tgl_k or tgl_b or date.today()),
                 "lama_hari"        : hari,
@@ -276,8 +280,11 @@ def main():
                         "jumlah"     : biaya_lain,
                     }).execute()
 
+            # 5. Update rekap kategori di SPD
+            update_rekap_spd(spd_id)
+
             ok_visum += 1
-            print(f"  [OK] visum_id={visum_id} | spd_id={spd_id}")
+            print(f"  [OK] visum_id={visum_id} | spd_id={spd_id} | rekap diupdate")
 
         except Exception as e:
             msg = f"ERROR di Visum {nomor_visum}: {e}"

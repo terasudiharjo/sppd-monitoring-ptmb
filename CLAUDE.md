@@ -264,6 +264,22 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 ```
 Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 
+### ✅ Sudah selesai (per sesi 2026-04-07):
+
+**Bug Fix & Script:**
+70. **Root cause bug kategori kosong**: `import_histori_2026.py` tidak memanggil `update_rekap_spd()` → kolom `total_direksi/dewas/administrasi/teknik/bantuan` di tabel `spd` semua 0
+71. `setup/fix_rekap_spd.py` — script repair: call `update_rekap_spd()` untuk semua SPD yang sudah ada di DB (tanpa clean DB)
+72. `setup/import_histori_2026.py` — 4 fix sekaligus:
+    - Tambah `update_rekap_spd(spd_id)` setelah insert sppd per visum (langkah 5)
+    - `skiprows=2` → dihapus (CSV header sekarang langsung baris 1)
+    - `tujuan: "-"` → baca dari kolom `Kota Tujuan` di CSV
+    - `parse_tgl()`: tambah format `%d-%m-%y` untuk handle `05-01-26`
+73. Import ulang dijalankan setelah fix: clean DB → import histori (24 visum, 52 sppd, tanggal & kota tujuan benar) → deduct RKAP
+
+**RKAP Monitor (`4_rkap_monitor.py`):**
+74. Tab Grafik: warna bar per lokasi dibedakan — biru (Dalam Kaltim), hijau (Luar Kaltim), oranye (Luar Negeri); anggaran = shade terang, terpakai = shade gelap
+75. Tab Detail per Bulan: urutan dropdown kategori ikut `KATEGORI_ORDER` (Dewas → Direksi → Adm → Teknik → Bantuan), sebelumnya alfabetis acak
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas:
