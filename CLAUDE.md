@@ -280,13 +280,36 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 74. Tab Grafik: warna bar per lokasi dibedakan — biru (Dalam Kaltim), hijau (Luar Kaltim), oranye (Luar Negeri); anggaran = shade terang, terpakai = shade gelap
 75. Tab Detail per Bulan: urutan dropdown kategori ikut `KATEGORI_ORDER` (Dewas → Direksi → Adm → Teknik → Bantuan), sebelumnya alfabetis acak
 
+### ✅ Sudah selesai (per sesi 2026-04-07, sesi lanjutan):
+
+**Fitur Laporan (`pages/6_laporan.py`, `utils/database.py`, `utils/pdf_generator.py`, `utils/excel_generator.py`):**
+76. Halaman baru `pages/6_laporan.py` dengan 3 tab: Laporan Realisasi | Rekap Bulanan | Rekap Semester
+77. `utils/excel_generator.py` (NEW) — generate Excel flat (no merge cell) untuk laporan realisasi
+78. `utils/pdf_generator.py` — tambah 3 fungsi:
+    - `generate_laporan_realisasi()` — Tabel I.6, F4 Landscape, merge cell per visum
+    - `generate_rekap_bulanan()` — F4 Portrait, per jabatan per lokasi
+    - `generate_rekap_semester()` — F4 Landscape, 6 bulan × Dalam/Luar
+79. `utils/database.py` — tambah 2 fungsi:
+    - `get_sppd_realisasi_laporan(bulan, tahun)` — return grouped by visum
+    - `get_rekap_perjalanan(bulan_list)` — return count per jabatan per lokasi
+80. Kolom laporan realisasi (final): No | Tgl Brgkt | Tgl Kmbli | Uraian Kegiatan | Kota | No. SPD | Nama | Jabatan | No. Voucher | SPPD | Tiket | Hotel | Biaya Lain | Total
+81. Merge cell per visum (PDF): kolom No/Tgl Brgkt/Tgl Kmbli/Uraian/Kota/No.SPD di-merge vertikal untuk semua peserta satu visum
+82. Bug fix: FK ambiguous di Supabase — `pegawai!sppd_pegawai_id_fkey` (ada 2 FK: pegawai_id & dibuat_oleh)
+83. Helper baru di `pdf_generator.py`: `_draw_kop_lap()`, `_cell()`, `_merged_cell()`, `_rp()`, `_d_short()`
+
+### ✅ Sudah selesai (sesi lanjutan 2026-04-07):
+
+**Bug Fix:**
+84. `2_visum.py`: `TypeError: unhashable type: 'dict'` di tab detail visum — kolom `visum.peserta` JSONB bisa return 3 format berbeda:
+    - String UUID (visum baru via UI)
+    - `{"id": "uuid"}` 
+    - `{"pegawai_id": "uuid", "nama": "..."}` (dari `import_histori_2026.py`)
+    Normalisasi dilakukan sekali di awal dengan `p.get("id") or p.get("pegawai_id")` sebelum loop peserta.
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas:
-1. **Fitur Laporan/Reporting** (`pages/6_laporan.py`) — halaman baru:
-   - Rekap jumlah perjalanan dinas per bulan & semester (trip, orang, total biaya)
-   - Laporan realisasi per bulan & semester (format tabel seperti CSV historis)
-   - Bisa di-print / export PDF
+1. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing sesuai review
 
 #### Opsional:
 2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data

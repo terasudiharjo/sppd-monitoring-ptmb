@@ -1615,6 +1615,692 @@ def _draw_pernyataan(c, data):
 
 
 # ══════════════════════════════════════════════════════════════
+# LAPORAN PERJALANAN DINAS
+# ══════════════════════════════════════════════════════════════
+
+# F4 Landscape untuk laporan realisasi & rekap semester
+_F4L = (330*mm, 215*mm)
+_PWL, _PHL = _F4L
+_ML = _MR = 1.5*cm
+_MT = _MB = 1.5*cm
+_CWL = _PWL - _ML - _MR   # content width landscape ≈ 850pt
+_CWP = PAGE_W - MARGIN_L - MARGIN_R   # content width portrait ≈ 524pt
+
+# Kolom laporan realisasi (pt, sum = _CWL ≈ 850)
+# Merged (6): No | Tgl_B | Tgl_K | Uraian | Kota | No.SPD
+_LAP_CM = [15, 48, 48, 122, 45, 72]   # sum=350
+# Per-orang (8): Nama | Jabatan | Voucher | SPPD | Tiket | Hotel | Lain | Total
+_LAP_CP = [90, 80, 55, 57, 57, 50, 55, 56]  # sum=500  → total=850
+
+_LAP_ROW_H = 0.50*cm
+_LAP_HDR_H = 0.65*cm
+_LAP_FS    = 7.5
+
+_STRUKTUR_KAT = {
+    "DIRUT":"Direksi", "DIRUM":"Direksi", "DIRTEK":"Direksi", "DIROPS":"Direksi",
+    "DEWAS_KETUA":"Dewan Pengawas", "DEWAS_ANGGOTA":"Dewan Pengawas",
+    "DEWAS_ANGGOTA_1":"Dewan Pengawas", "DEWAS_ANGGOTA_2":"Dewan Pengawas",
+    "ADM_MANAJER":"Adm/Keuangan", "ADM_SUPERVISOR":"Adm/Keuangan",
+    "ADM_STAF_PELAKSANA":"Adm/Keuangan",
+    "TEKNIK_MANAJER":"Teknik/Operasional", "TEKNIK_SUPERVISOR":"Teknik/Operasional",
+    "TEKNIK_STAF_PELAKSANA":"Teknik/Operasional", "BANTUAN":"Teknik/Operasional",
+}
+
+_STRUKTUR_KELOMPOK = {
+    "DIRUT":"I", "DIRUM":"I", "DIRTEK":"I", "DIROPS":"I",
+    "DEWAS_KETUA":"I", "DEWAS_ANGGOTA":"I",
+    "DEWAS_ANGGOTA_1":"I", "DEWAS_ANGGOTA_2":"I",
+    "ADM_MANAJER":"II", "TEKNIK_MANAJER":"II",
+    "ADM_SUPERVISOR":"III", "TEKNIK_SUPERVISOR":"III",
+    "ADM_STAF_PELAKSANA":"IV", "TEKNIK_STAF_PELAKSANA":"IV", "BANTUAN":"IV",
+}
+
+_KELOMPOK_LABEL = {
+    "I":  "DIREKSI & DEWAN PENGAWAS",
+    "II": "MANAJER",
+    "III":"SUPERVISOR",
+    "IV": "STAF",
+}
+
+
+def _draw_kop_lap(c, pw, ph, ml, mr, mt):
+    """Kop surat generik untuk laporan (portrait atau landscape)."""
+    y_top = ph - mt
+    logo_size = 1.9 * cm
+    logo_x = ml
+    logo_y = y_top - logo_size
+    if os.path.exists(LOGO_PATH):
+        c.drawImage(LOGO_PATH, logo_x, logo_y, width=logo_size, height=logo_size,
+                    preserveAspectRatio=True, mask="auto")
+    nama_x = logo_x + logo_size + 0.4*cm
+    text_cx = nama_x + (pw - mr - nama_x) / 2
+    c.setFont(FONT_BOLD, 13)
+    c.setFillColor(colors.black)
+    c.drawCentredString(text_cx, y_top - 0.60*cm, "PERUSAHAAN UMUM DAERAH")
+    c.drawCentredString(text_cx, y_top - 1.15*cm, "TIRTA MANUNTUNG BALIKPAPAN")
+    ly1 = y_top - logo_size - 0.20*cm
+    ly2 = ly1 - 0.12*cm
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(2.5)
+    c.line(ml, ly1, pw - mr, ly1)
+    c.setLineWidth(0.8)
+    c.line(ml, ly2, pw - mr, ly2)
+    return ly2 - 0.25*cm
+
+
+def _cell(c, text, x, y_top, w, h, fs=_LAP_FS, bold=False, align="c",
+          bg=None, stroke=True, color=None):
+    """Draw a single table cell. y_top = top edge of cell.
+    Supports multi-line text via '\\n' (uses Paragraph)."""
+    if bg:
+        c.setFillColor(bg)
+        c.rect(x, y_top - h, w, h, fill=1, stroke=0)
+    if stroke:
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.4)
+        c.rect(x, y_top - h, w, h, fill=0, stroke=1)
+    c.setFillColor(color or colors.black)
+    fn = FONT_BOLD if bold else FONT_NORMAL
+    txt = str(text)
+    pad = 1.5
+
+    if "\n" in txt:
+        # Multi-line: use Paragraph for proper line breaks
+        al_map = {"c": 1, "l": 0, "r": 2}
+        style = ParagraphStyle("cl", fontName=fn, fontSize=fs,
+                               leading=fs * 1.3,
+                               alignment=al_map.get(align, 1))
+        p = Paragraph(txt.replace("\n", "<br/>"), style)
+        pw2, ph2 = p.wrap(max(w - pad * 2, 1), max(h - 2, 1))
+        py = y_top - h / 2 + ph2 / 2
+        p.drawOn(c, x + pad, py - ph2)
+    else:
+        c.setFont(fn, fs)
+        ty = y_top - h / 2 - fs * 0.35
+        if align == "c":
+            c.drawCentredString(x + w / 2, ty, txt)
+        elif align == "r":
+            c.drawRightString(x + w - pad, ty, txt)
+        else:
+            c.drawString(x + pad, ty, txt)
+
+
+def _merged_cell(c, text, x, y_top, w, gh, fs=_LAP_FS, bg=None, stroke=True):
+    """Draw a vertically merged cell (height gh). Text wrapped & centered."""
+    if bg:
+        c.setFillColor(bg)
+        c.rect(x, y_top - gh, w, gh, fill=1, stroke=0)
+    if stroke:
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.4)
+        c.rect(x, y_top - gh, w, gh, fill=0, stroke=1)
+    if not text:
+        return
+    c.setFillColor(colors.black)
+    style = ParagraphStyle("mc", fontName=FONT_NORMAL, fontSize=fs,
+                           leading=fs*1.3, alignment=1, wordWrap="LTR")
+    p = Paragraph(str(text), style)
+    pw2, ph2 = p.wrap(max(w - 3, 1), max(gh - 2, 1))
+    py = y_top - gh/2 + ph2/2
+    p.drawOn(c, x + 1.5, py - ph2)
+
+
+def _rp(n):
+    """Format angka ke string ribuan."""
+    if not n:
+        return "-"
+    return "{:,.0f}".format(n).replace(",", ".")
+
+
+def _d_short(s):
+    """'2026-01-04' → '4-Jan'"""
+    if not s:
+        return ""
+    try:
+        d = datetime.strptime(str(s)[:10], "%Y-%m-%d").date()
+        bln = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][d.month-1]
+        return f"{d.day}-{bln}"
+    except Exception:
+        return str(s)[:8]
+
+
+def generate_laporan_realisasi(data: dict) -> BytesIO:
+    """
+    Generate PDF Laporan Realisasi SPPD (Tabel I.6) — F4 Landscape.
+    data = {
+        "groups": [...],    # dari get_sppd_realisasi_laporan()
+        "bulan": int,
+        "tahun": int,
+        "ttd": {"menyetujui": str, "diperiksa": str, "dibuat": str}
+    }
+    """
+    groups = data.get("groups", [])
+    bulan  = data["bulan"]
+    tahun  = data["tahun"]
+    ttd    = data.get("ttd", {})
+
+    PW, PH = _PWL, _PHL
+    ML, MR = _ML, _MR
+    MB     = _MB
+    CW     = _CWL
+    CM2    = _LAP_CM   # merged col widths
+    CP2    = _LAP_CP   # per-person col widths
+    RH     = _LAP_ROW_H
+    HH     = _LAP_HDR_H
+    FS     = _LAP_FS
+
+    GREY  = colors.HexColor("#E0E0E0")
+    LGREY = colors.HexColor("#F5F5F5")
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(PW, PH))
+
+    def tbl_header(y):
+        hm = ["No","Tgl\nBrgkt","Tgl\nKmbli","Uraian Kegiatan","Kota","No. SPD/\nVoucher"]
+        hp = ["Nama","Jabatan","No.\nVoucher","SPPD\n(Rp)","Tiket\n(Rp)","Hotel\n(Rp)","Biaya\nLain (Rp)","Total\n(Rp)"]
+        x = ML
+        for w, lbl in zip(CM2, hm):
+            _cell(c, lbl, x, y, w, HH, bold=True, align="c", bg=GREY, fs=FS)
+            x += w
+        for w, lbl in zip(CP2, hp):
+            _cell(c, lbl, x, y, w, HH, bold=True, align="c", bg=GREY, fs=FS)
+            x += w
+        return y - HH
+
+    def draw_group(y, no_urut, group):
+        v    = group["visum"]
+        rows = group["sppd_rows"]
+        n    = len(rows)
+        gh   = n * RH
+        bg   = LGREY if no_urut % 2 == 0 else None
+
+        mvals = [
+            str(no_urut),
+            _d_short(v.get("tanggal_berangkat")),
+            _d_short(v.get("tanggal_kembali")),
+            v.get("keperluan", "") or "",
+            v.get("tujuan", "") or "",
+            v.get("nomor_spd", "") or "",
+        ]
+        x = ML
+        for w, val in zip(CM2, mvals):
+            _merged_cell(c, val, x, y, w, gh, fs=FS, bg=bg)
+            x += w
+
+        x_p = x
+        for row in rows:
+            pvals = [
+                (row.get("nama","") or "").title(),
+                (row.get("jabatan","") or "").title(),
+                row.get("nomor_voucher","") or "-",
+                _rp(row.get("uang_saku",0)),
+                _rp(row.get("tiket",0)),
+                _rp(row.get("hotel",0)),
+                _rp(row.get("biaya_lain",0)),
+                _rp(row.get("total",0)),
+            ]
+            aligns = ["l","l","c","r","r","r","r","r"]
+            x = x_p
+            for w, val, al in zip(CP2, pvals, aligns):
+                _cell(c, val, x, y, w, RH, align=al, fs=FS, bg=bg)
+                x += w
+            y -= RH
+        return y
+
+    def page_header():
+        y = _draw_kop_lap(c, PW, PH, ML, MR, _MT)
+        c.setFont(FONT_BOLD, 8.5)
+        c.drawCentredString(PW/2, y, "Tabel I.6  REALISASI SURAT PERMINTAAN PERJALANAN DINAS (SPPD)")
+        y -= 0.38*cm
+        c.drawCentredString(PW/2, y, f"BULAN {BULAN_ID[bulan].upper()} {tahun}")
+        y -= 0.35*cm
+        return tbl_header(y)
+
+    def lap_footer(y):
+        from collections import defaultdict
+        kat_tot = defaultdict(int)
+        grand   = 0
+        for g in groups:
+            for row in g["sppd_rows"]:
+                kat = _STRUKTUR_KAT.get(row.get("struktur_rkap",""), "Lain-lain")
+                kat_tot[kat] += row.get("total", 0)
+                grand += row.get("total", 0)
+
+        y -= 0.25*cm
+        c.setFont(FONT_NORMAL, FS)
+        for kat in ["Dewan Pengawas","Direksi","Adm/Keuangan","Teknik/Operasional"]:
+            if kat in kat_tot:
+                c.drawString(ML, y, kat)
+                c.drawString(ML + 5*cm, y, "Rp {:,.0f}".format(kat_tot[kat]).replace(",","."))
+                y -= 0.38*cm
+        c.setFont(FONT_BOLD, FS + 0.5)
+        c.drawString(ML, y, f"TOTAL BIAYA SPPD BULAN {BULAN_ID[bulan].upper()} {tahun}")
+        c.drawString(ML + 5*cm, y, "Rp {:,.0f}".format(grand).replace(",","."))
+
+        # TTD
+        y -= 0.5*cm
+        from datetime import date as _date
+        tgl_str = f"Balikpapan, {fmt_tgl(_date.today())}"
+        cw3 = CW / 3
+        c.setFont(FONT_NORMAL, FS)
+        c.drawRightString(PW - MR, y, tgl_str)
+        y -= 0.35*cm
+        for i, (lbl1, lbl2) in enumerate([
+            ("Menyetujui :", "Manajer Sekretaris Perusahaan"),
+            ("Diperiksa Oleh :", "Supervisor Kesekretariatan & Hukum"),
+            ("Dibuat Oleh :", "Staf Kesekretariatan & Hukum"),
+        ]):
+            cx = ML + cw3 * (i + 0.5)
+            c.drawCentredString(cx, y, lbl1)
+        y -= 0.35*cm
+        for i, lbl2 in enumerate([
+            "Manajer Sekretaris Perusahaan",
+            "Supervisor Kesekretariatan & Hukum",
+            "Staf Kesekretariatan & Hukum",
+        ]):
+            cx = ML + cw3 * (i + 0.5)
+            c.drawCentredString(cx, y, lbl2)
+
+        y -= 2.0*cm
+        nms = [
+            (ttd.get("menyetujui","") or "").upper(),
+            (ttd.get("diperiksa","") or "").upper(),
+            (ttd.get("dibuat","") or "").upper(),
+        ]
+        for i, nm in enumerate(nms):
+            if nm:
+                cx = ML + cw3 * (i + 0.5)
+                c.setFont(FONT_BOLD, FS)
+                nw = c.stringWidth(nm, FONT_BOLD, FS)
+                c.drawCentredString(cx, y, nm)
+                c.setLineWidth(0.8)
+                c.line(cx - nw/2 - 2, y - 2, cx + nw/2 + 2, y - 2)
+
+    # ── Render ──
+    y = page_header()
+    for no_urut, group in enumerate(groups, 1):
+        gh = len(group["sppd_rows"]) * RH
+        if y - gh < MB + 4.5*cm:
+            c.showPage()
+            y = page_header()
+        y = draw_group(y, no_urut, group)
+
+    # Garis bawah tabel
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.line(ML, y, PW - MR, y)
+
+    lap_footer(y)
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+def generate_rekap_bulanan(data: dict) -> BytesIO:
+    """
+    Generate PDF Rekap Perjalanan Dinas Bulanan — F4 Portrait.
+    data = {
+        "rekap": {(bulan,tahun): [...]},  # dari get_rekap_perjalanan([(b,t)])
+        "bulan": int,
+        "tahun": int,
+        "ttd": {"menyetujui": str, "diperiksa": str, "dibuat": str}
+    }
+    """
+    bulan = data["bulan"]
+    tahun = data["tahun"]
+    ttd   = data.get("ttd", {})
+    rekap = data.get("rekap", {}).get((bulan, tahun), [])
+
+    LOKASI_DALAM_ID = "6f7a80e0-1ca3-4e36-8d94-500bf8645efe"
+    LOKASI_LUAR_ID  = "99c9f92f-972f-46d5-99d4-219b758d2cb7"
+
+    PW, PH = PAGE_W, PAGE_H
+    ML, MR = MARGIN_L, MARGIN_R
+    MB     = MARGIN_B
+    CW     = _CWP
+    FS     = 9.0
+    RH     = 0.52*cm
+    HH     = 0.60*cm
+
+    GREY  = colors.HexColor("#D9D9D9")
+    LGREY = colors.HexColor("#F2F2F2")
+    LBLUE = colors.HexColor("#EEF4FF")
+
+    # Kolom: No(20) | Jabatan(285) | Dalam(76) | Luar(76) | Total(67) = 524
+    CWS = [20, 285, 76, 76, 67]
+
+    buf = BytesIO()
+    c   = canvas.Canvas(buf, pagesize=(PW, PH))
+
+    # Kelompokkan rekap by kelompok & jabatan
+    from collections import defaultdict
+    jab_map = {}   # jabatan → {dalam:int, luar:int}
+    for row in rekap:
+        jab = row["jabatan"] or "?"
+        lok = row["lokasi_id"]
+        cnt = row["count"]
+        if jab not in jab_map:
+            jab_map[jab] = {"dalam":0, "luar":0, "rkap":row.get("struktur_rkap","")}
+        if lok == LOKASI_DALAM_ID:
+            jab_map[jab]["dalam"] += cnt
+        else:
+            jab_map[jab]["luar"]  += cnt
+
+    # Urutan kelompok
+    def kel(rkap): return _STRUKTUR_KELOMPOK.get(rkap, "IV")
+    jabatan_sorted = sorted(jab_map.items(), key=lambda x: (kel(x[1]["rkap"]), x[0]))
+
+    y = _draw_kop_lap(c, PW, PH, ML, MR, MARGIN_T)
+    c.setFont(FONT_BOLD, 11)
+    c.drawCentredString(PW/2, y, "REKAPITULASI DATA PERJALANAN DINAS")
+    y -= 0.45*cm
+    c.drawCentredString(PW/2, y, f"{BULAN_ID[bulan].upper()} {tahun}")
+    y -= 0.5*cm
+
+    # Header tabel
+    hdrs = ["No", "Kelompok & Jabatan", "Dalam\nProv. Kaltim", "Luar\nProv. Kaltim", "Total\nKeberangkatan"]
+    x = ML
+    for w, h in zip(CWS, hdrs):
+        _cell(c, h, x, y, w, HH, bold=True, align="c", bg=GREY, fs=FS)
+        x += w
+    y -= HH
+
+    no_jab  = 0
+    cur_kel = None
+    tot_dlm = tot_luar = 0
+
+    for jab, info in jabatan_sorted:
+        k = kel(info["rkap"])
+        if k != cur_kel:
+            # Kelompok header row
+            label = f"{k}. {_KELOMPOK_LABEL.get(k, k)}"
+            x = ML
+            _cell(c, label, x, y, CW, RH, bold=True, align="l", bg=LGREY, fs=FS, stroke=True)
+            # draw inner borders
+            for w in CWS:
+                c.setStrokeColor(colors.black)
+                c.setLineWidth(0.4)
+                c.rect(x, y - RH, w, RH, fill=0, stroke=1)
+                x += w
+            y -= RH
+            cur_kel = k
+            no_jab  = 0
+            if y < MB + 4*cm:
+                c.showPage()
+                y = PH - MARGIN_T - 0.5*cm
+
+        no_jab += 1
+        dlm  = info["dalam"]
+        luar = info["luar"]
+        tot  = dlm + luar
+        tot_dlm  += dlm
+        tot_luar += luar
+
+        vals  = [str(no_jab), jab.title(), str(dlm) if dlm else "-", str(luar) if luar else "-",
+                 str(tot) if tot else "-"]
+        aligns= ["c","l","c","c","c"]
+        x = ML
+        for w, v, al in zip(CWS, vals, aligns):
+            _cell(c, v, x, y, w, RH, align=al, fs=FS)
+            x += w
+        y -= RH
+
+        if y < MB + 4*cm:
+            c.showPage()
+            y = PH - MARGIN_T - 0.5*cm
+
+    # Total row
+    grand = tot_dlm + tot_luar
+    vals  = ["", "TOTAL KESELURUHAN", str(tot_dlm), str(tot_luar), str(grand)]
+    aligns= ["c","l","c","c","c"]
+    x = ML
+    for w, v, al in zip(CWS, vals, aligns):
+        _cell(c, v, x, y, w, RH, bold=True, align=al, bg=GREY, fs=FS)
+        x += w
+    y -= RH
+
+    # TTD
+    from datetime import date as _date
+    y -= 0.4*cm
+    c.setFont(FONT_NORMAL, FS)
+    tgl_str = f"Balikpapan, {fmt_tgl(_date.today())}"
+    c.drawRightString(PW - MR, y, tgl_str)
+    y -= 0.35*cm
+
+    cw3 = CW / 3
+    for i, (l1, l2) in enumerate([
+        ("Menyetujui :", "Manajer Sekretaris Perusahaan"),
+        ("Diperiksa Oleh :", "Supervisor Kesekretariatan & Hukum"),
+        ("Dibuat Oleh :", "Staf Kesekretariatan & Hukum"),
+    ]):
+        cx = ML + cw3*(i+0.5)
+        c.drawCentredString(cx, y, l1)
+    y -= 0.35*cm
+    for i, l2 in enumerate([
+        "Manajer Sekretaris Perusahaan",
+        "Supervisor Kesekretariatan & Hukum",
+        "Staf Kesekretariatan & Hukum",
+    ]):
+        c.drawCentredString(ML + cw3*(i+0.5), y, l2)
+
+    y -= 2.0*cm
+    for i, nm_key in enumerate(["menyetujui","diperiksa","dibuat"]):
+        nm = (ttd.get(nm_key,"") or "").upper()
+        if nm:
+            cx = ML + cw3*(i+0.5)
+            c.setFont(FONT_BOLD, FS)
+            nw = c.stringWidth(nm, FONT_BOLD, FS)
+            c.drawCentredString(cx, y, nm)
+            c.setLineWidth(0.8)
+            c.line(cx - nw/2 - 2, y - 2, cx + nw/2 + 2, y - 2)
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+def generate_rekap_semester(data: dict) -> BytesIO:
+    """
+    Generate PDF Rekap Perjalanan Dinas Semester — F4 Landscape.
+    data = {
+        "rekap": {(b,t): [...]},     # dari get_rekap_perjalanan(6 bulan)
+        "bulan_list": [(b,t), ...],  # 6 bulan berurutan
+        "ttd": {"menyetujui": str, "diperiksa": str, "dibuat": str}
+    }
+    """
+    bulan_list = data.get("bulan_list", [])
+    rekap      = data.get("rekap", {})
+    ttd        = data.get("ttd", {})
+    if not bulan_list:
+        buf = BytesIO(); buf.write(b""); buf.seek(0); return buf
+
+    LOKASI_DALAM_ID = "6f7a80e0-1ca3-4e36-8d94-500bf8645efe"
+    LOKASI_LUAR_ID  = "99c9f92f-972f-46d5-99d4-219b758d2cb7"
+
+    PW, PH = _PWL, _PHL
+    ML, MR = _ML, _MR
+    MB     = _MB
+    CW     = _CWL
+    FS     = 7.5
+    RH     = 0.50*cm
+    HH1    = 0.55*cm   # header baris 1
+    HH2    = 0.50*cm   # header baris 2
+
+    GREY  = colors.HexColor("#D9D9D9")
+    LGREY = colors.HexColor("#F2F2F2")
+
+    # Kolom: No(15) | Jabatan(260) | [Dlm(42)+Luar(42)]×6 | Total(71) = 850
+    CW_NO  = 15
+    CW_JAB = 260
+    CW_DLM = 42
+    CW_LUR = 42
+    CW_TOT = 71
+    # verify: 15+260+6*(42+42)+71 = 15+260+504+71 = 850 ✓
+
+    buf = BytesIO()
+    c   = canvas.Canvas(buf, pagesize=(PW, PH))
+
+    # Build jabatan map keseluruhan
+    from collections import defaultdict
+    all_jab = set()
+    for bt in bulan_list:
+        for row in rekap.get(bt, []):
+            if row["jabatan"]:
+                all_jab.add((row["jabatan"], row.get("struktur_rkap","")))
+
+    # jab_data[jabatan] = {(b,t): {dalam:n, luar:n}}
+    jab_data = {}
+    for jab, rkap_val in all_jab:
+        jab_data[jab] = {"rkap": rkap_val}
+        for bt in bulan_list:
+            jab_data[jab][bt] = {"dalam": 0, "luar": 0}
+
+    for bt in bulan_list:
+        for row in rekap.get(bt, []):
+            jab = row["jabatan"]
+            if not jab or jab not in jab_data:
+                continue
+            lok = row["lokasi_id"]
+            cnt = row["count"]
+            if lok == LOKASI_DALAM_ID:
+                jab_data[jab][bt]["dalam"] += cnt
+            else:
+                jab_data[jab][bt]["luar"]  += cnt
+
+    def kel(rkap_v): return _STRUKTUR_KELOMPOK.get(rkap_v, "IV")
+    jab_sorted = sorted(jab_data.items(), key=lambda x: (kel(x[1]["rkap"]), x[0]))
+
+    y = _draw_kop_lap(c, PW, PH, ML, MR, _MT)
+
+    b0, t0 = bulan_list[0]
+    b1, t1 = bulan_list[-1]
+    c.setFont(FONT_BOLD, 9)
+    c.drawCentredString(PW/2, y, "REKAPITULASI DATA PERJALANAN DINAS")
+    y -= 0.38*cm
+    c.drawCentredString(PW/2, y,
+        f"{BULAN_ID[b0].upper()} - {BULAN_ID[b1].upper()} {t1}")
+    y -= 0.42*cm
+
+    # Header 2 baris
+    # Baris 1: No (span 2 rows) | Kelompok (span 2 rows) | [BulanX Dalam | BulanX Luar] | Total (span 2)
+    x = ML
+    _cell(c, "No", x, y, CW_NO, HH1+HH2, bold=True, align="c", bg=GREY, fs=FS)
+    x += CW_NO
+    _cell(c, "Kelompok & Jabatan", x, y, CW_JAB, HH1+HH2, bold=True, align="c", bg=GREY, fs=FS)
+    x += CW_JAB
+    for (b, t) in bulan_list:
+        _cell(c, BULAN_ID[b], x, y, CW_DLM+CW_LUR, HH1, bold=True, align="c", bg=GREY, fs=FS)
+        x += CW_DLM + CW_LUR
+    _cell(c, "Total\nKeberangkatan", x, y, CW_TOT, HH1+HH2, bold=True, align="c", bg=GREY, fs=FS)
+
+    # Baris 2: Dalam | Luar per bulan
+    y -= HH1
+    x  = ML + CW_NO + CW_JAB
+    for _ in bulan_list:
+        _cell(c, "Dalam\nProv.", x, y, CW_DLM, HH2, bold=True, align="c", bg=GREY, fs=FS)
+        x += CW_DLM
+        _cell(c, "Luar\nProv.", x, y, CW_LUR, HH2, bold=True, align="c", bg=GREY, fs=FS)
+        x += CW_LUR
+    y -= HH2
+
+    no_jab  = 0
+    cur_kel = None
+    col_tot = {bt: {"dalam":0,"luar":0} for bt in bulan_list}
+    grand   = 0
+
+    for jab, info in jab_sorted:
+        k = kel(info["rkap"])
+        if k != cur_kel:
+            lbl = f"{k}. {_KELOMPOK_LABEL.get(k, k)}"
+            x = ML
+            # Draw group label spanning full width
+            _cell(c, lbl, x, y, CW, RH, bold=True, align="l", bg=LGREY, fs=FS)
+            y -= RH
+            cur_kel = k
+            no_jab  = 0
+            if y < MB + 4*cm:
+                c.showPage()
+                y = PH - _MT - 0.3*cm
+
+        no_jab += 1
+        row_tot = 0
+        x = ML
+        _cell(c, str(no_jab), x, y, CW_NO, RH, align="c", fs=FS)
+        x += CW_NO
+        _cell(c, jab.title(), x, y, CW_JAB, RH, align="l", fs=FS)
+        x += CW_JAB
+        for bt in bulan_list:
+            dlm = info[bt]["dalam"]
+            lur = info[bt]["luar"]
+            col_tot[bt]["dalam"] += dlm
+            col_tot[bt]["luar"]  += lur
+            row_tot += dlm + lur
+            _cell(c, str(dlm) if dlm else "-", x, y, CW_DLM, RH, align="c", fs=FS)
+            x += CW_DLM
+            _cell(c, str(lur) if lur else "-", x, y, CW_LUR, RH, align="c", fs=FS)
+            x += CW_LUR
+        grand += row_tot
+        _cell(c, str(row_tot) if row_tot else "-", x, y, CW_TOT, RH, bold=True, align="c", fs=FS)
+        y -= RH
+
+        if y < MB + 4*cm:
+            c.showPage()
+            y = PH - _MT - 0.3*cm
+
+    # Total row
+    x = ML
+    _cell(c, "", x, y, CW_NO, RH, bold=True, align="c", bg=GREY, fs=FS)
+    x += CW_NO
+    _cell(c, "TOTAL KESELURUHAN", x, y, CW_JAB, RH, bold=True, align="l", bg=GREY, fs=FS)
+    x += CW_JAB
+    run_grand = 0
+    for bt in bulan_list:
+        dlm = col_tot[bt]["dalam"]
+        lur = col_tot[bt]["luar"]
+        run_grand += dlm + lur
+        _cell(c, str(dlm) if dlm else "-", x, y, CW_DLM, RH, bold=True, align="c", bg=GREY, fs=FS)
+        x += CW_DLM
+        _cell(c, str(lur) if lur else "-", x, y, CW_LUR, RH, bold=True, align="c", bg=GREY, fs=FS)
+        x += CW_LUR
+    _cell(c, str(run_grand), x, y, CW_TOT, RH, bold=True, align="c", bg=GREY, fs=FS)
+    y -= RH
+
+    # TTD
+    from datetime import date as _date
+    y -= 0.4*cm
+    c.setFont(FONT_NORMAL, FS)
+    tgl_str = f"Balikpapan, {fmt_tgl(_date.today())}"
+    c.drawRightString(PW - MR, y, tgl_str)
+    y -= 0.35*cm
+
+    cw3 = CW / 3
+    for i, l1 in enumerate(["Menyetujui :", "Diperiksa Oleh :", "Dibuat Oleh :"]):
+        c.drawCentredString(ML + cw3*(i+0.5), y, l1)
+    y -= 0.35*cm
+    for i, l2 in enumerate([
+        "Manajer Sekretaris Perusahaan",
+        "Supervisor Kesekretariatan & Hukum",
+        "Staf Kesekretariatan & Hukum",
+    ]):
+        c.drawCentredString(ML + cw3*(i+0.5), y, l2)
+
+    y -= 2.0*cm
+    for i, nm_key in enumerate(["menyetujui","diperiksa","dibuat"]):
+        nm = (ttd.get(nm_key,"") or "").upper()
+        if nm:
+            cx = ML + cw3*(i+0.5)
+            c.setFont(FONT_BOLD, FS)
+            nw = c.stringWidth(nm, FONT_BOLD, FS)
+            c.drawCentredString(cx, y, nm)
+            c.setLineWidth(0.8)
+            c.line(cx - nw/2 - 2, y - 2, cx + nw/2 + 2, y - 2)
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+# ══════════════════════════════════════════════════════════════
 # TEST SEMUA DOKUMEN
 # ══════════════════════════════════════════════════════════════
 if __name__ == "__main__":

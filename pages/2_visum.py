@@ -443,7 +443,19 @@ with tab3:
                 pegawai_all = get_all_pegawai()
                 pegawai_map = {p["id"]: p for p in pegawai_all}
                 divisi_map_local = {p["divisi"]["id"]: p["divisi"] for p in pegawai_all if p.get("divisi") and p["divisi"].get("id")}
-                peserta_ids = v.get("peserta") or []
+                # Normalkan peserta_ids: JSONB bisa return berbagai format:
+                # - string UUID (dari visum baru via UI)
+                # - {"id": "uuid"}
+                # - {"pegawai_id": "uuid", "nama": "..."} (dari import histori)
+                _raw_peserta = v.get("peserta") or []
+                peserta_ids = []
+                for p in _raw_peserta:
+                    if isinstance(p, dict):
+                        pid = p.get("id") or p.get("pegawai_id")
+                    else:
+                        pid = p
+                    if pid:
+                        peserta_ids.append(pid)
 
                 st.markdown("#### 👥 Peserta Perjalanan")
                 if peserta_ids:

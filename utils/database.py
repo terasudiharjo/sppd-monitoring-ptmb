@@ -686,3 +686,184 @@ def get_transport_detail(sppd_id: str) -> list:
         .order("urutan")\
         .execute()
     return res.data or []
+
+
+# ─── LAPORAN ────────────────────────────────────────────
+
+def get_sppd_realisasi_laporan(bulan: int, tahun: int) -> list:
+    """Ambil data realisasi SPPD untuk laporan bulanan.
+
+    Return: list of dict per visum, masing-masing berisi:
+      {
+        "visum": {id, nomor_visum, tanggal_berangkat, tanggal_kembali, tujuan, keperluan, nomor_spd},
+        "sppd_rows": [
+          {nama, jabatan, struktur_rkap, lokasi_id, nomor_voucher,
+           uang_saku, tiket, hotel, biaya_lain, total},
+          ...
+        ]
+      }
+    Diurutkan berdasarkan tanggal_berangkat visum ASC.
+    """
+    from datetime import date as _date
+    import calendar
+
+    db = get_client()
+
+    # Range tanggal untuk bulan yg diminta
+    start = f"{tahun}-{bulan:02d}-01"
+    last_day = calendar.monthrange(tahun, bulan)[1]
+    end = f"{tahun}-{bulan:02d}-{last_day}"
+
+    # 1. Ambil visum dalam bulan ini
+    res_v = db.table("visum")\
+        .select("id, nomor_visum, tanggal_berangkat, tanggal_kembali, tujuan, keperluan")\
+        .gte("tanggal_berangkat", start)\
+        .lte("tanggal_berangkat", end)\
+        .order("tanggal_berangkat")\
+        .execute()
+    visums = res_v.data or []
+    if not visums:
+        return []
+
+    visum_ids = [v["id"] for v in visums]
+
+    # 2. Ambil semua sppd untuk visum tersebut (status realisasi / completed)
+    res_s = db.table("sppd")\
+        .select("id, visum_id, spd_id, lokasi_id, nomor_voucher, "
+                "subtotal_uang_saku, total_transport, total_hotel, total_biaya, "
+                "biaya_jenazah, pegawai!sppd_pegawai_id_fkey(nama, jabatan(nama, struktur_rkap))")\
+        .in_("visum_id", visum_ids)\
+        .in_("status", ["realisasi", "completed"])\
+        .execute()
+    sppd_list = res_s.data or []
+
+    # 3. Ambil nomor_spd untuk setiap spd_id unik
+    spd_ids = list({s["spd_id"] for s in sppd_list if s.get("spd_id")})
+    spd_map = {}
+    if spd_ids:
+        res_spd = db.table("spd")\
+            .select("id, nomor_spd")\
+            .in_("id", spd_ids)\
+            .execute()
+        spd_map = {row["id"]: row["nomor_spd"] for row in (res_spd.data or [])}
+
+    # 4. Biaya lain per sppd (batch)
+    sppd_ids = [s["id"] for s in sppd_list]
+    biaya_lain_map = {}
+    if sppd_ids:
+        res_bl = db.table("sppd_biaya_lain")\
+            .select("sppd_id, jumlah")\
+            .in_("sppd_id", sppd_ids)\
+            .execute()
+        for row in (res_bl.data or []):
+            biaya_lain_map[row["sppd_id"]] = biaya_lain_map.get(row["sppd_id"], 0) + row["jumlah"]
+
+    # 5. Build sppd dict yang lebih ringkas, indeks by visum_id
+    sppd_by_visum = {}
+    for s in sppd_list:
+        vid = s["visum_id"]
+        peg = s.get("pegawai!sppd_pegawai_id_fkey") or s.get("pegawai") or {}
+        jab = peg.get("jabatan") or {}
+        bl_sum = biaya_lain_map.get(s["id"], 0)
+        # Biaya lain = total_biaya - uang_saku - tiket - hotel (- jenazah kalau ada)
+        biaya_lain_calc = (
+            s.get("total_biaya", 0)
+            - s.get("subtotal_uang_saku", 0)
+            - s.get("total_transport", 0)
+            - s.get("total_hotel", 0)
+            - s.get("biaya_jenazah", 0)
+        )
+        row = {
+            "nama": peg.get("nama", ""),
+            "jabatan": jab.get("nama", ""),
+            "struktur_rkap": jab.get("struktur_rkap", ""),
+            "lokasi_id": s.get("lokasi_id", ""),
+            "nomor_voucher": s.get("nomor_voucher") or "",
+            "nomor_spd": spd_map.get(s.get("spd_id"), ""),
+            "uang_saku": s.get("subtotal_uang_saku", 0),
+            "tiket": s.get("total_transport", 0),
+            "hotel": s.get("total_hotel", 0),
+            "biaya_lain": max(biaya_lain_calc, 0),
+            "total": s.get("total_biaya", 0),
+        }
+        sppd_by_visum.setdefault(vid, []).append(row)
+
+    # 6. Susun output terurut by tanggal_berangkat
+    result = []
+    for v in visums:
+        rows = sppd_by_visum.get(v["id"], [])
+        if not rows:
+            continue
+        # nomor_spd untuk visum ini (ambil dari baris pertama)
+        nomor_spd = rows[0]["nomor_spd"] if rows else ""
+        result.append({
+            "visum": {
+                "id": v["id"],
+                "nomor_visum": v["nomor_visum"],
+                "tanggal_berangkat": v["tanggal_berangkat"],
+                "tanggal_kembali": v["tanggal_kembali"],
+                "tujuan": v.get("tujuan", ""),
+                "keperluan": v.get("keperluan", ""),
+                "nomor_spd": nomor_spd,
+            },
+            "sppd_rows": rows,
+        })
+    return result
+
+
+def get_rekap_perjalanan(bulan_list: list) -> dict:
+    """Ambil rekap jumlah keberangkatan per jabatan per lokasi.
+
+    bulan_list: [(bulan, tahun), ...]  — bisa 1 bulan (bulanan) atau 6 bulan (semester)
+
+    Return: {
+      (bulan, tahun): [
+        {"jabatan": str, "struktur_rkap": str, "lokasi_id": str, "count": int},
+        ...
+      ]
+    }
+    """
+    import calendar
+
+    db = get_client()
+    result = {}
+
+    for bulan, tahun in bulan_list:
+        start = f"{tahun}-{bulan:02d}-01"
+        last_day = calendar.monthrange(tahun, bulan)[1]
+        end = f"{tahun}-{bulan:02d}-{last_day}"
+
+        # Ambil visum IDs dalam bulan ini
+        res_v = db.table("visum")\
+            .select("id")\
+            .gte("tanggal_berangkat", start)\
+            .lte("tanggal_berangkat", end)\
+            .execute()
+        visum_ids = [v["id"] for v in (res_v.data or [])]
+
+        if not visum_ids:
+            result[(bulan, tahun)] = []
+            continue
+
+        # Ambil sppd (status realisasi/completed) beserta jabatan & lokasi
+        res_s = db.table("sppd")\
+            .select("lokasi_id, pegawai!sppd_pegawai_id_fkey(jabatan(nama, struktur_rkap))")\
+            .in_("visum_id", visum_ids)\
+            .in_("status", ["realisasi", "completed"])\
+            .execute()
+
+        # Group by jabatan + lokasi
+        counts = {}
+        for s in (res_s.data or []):
+            peg = s.get("pegawai!sppd_pegawai_id_fkey") or s.get("pegawai") or {}
+            jab = peg.get("jabatan") or {}
+            key = (jab.get("nama", ""), jab.get("struktur_rkap", ""), s.get("lokasi_id", ""))
+            counts[key] = counts.get(key, 0) + 1
+
+        rows = [
+            {"jabatan": k[0], "struktur_rkap": k[1], "lokasi_id": k[2], "count": v}
+            for k, v in counts.items()
+        ]
+        result[(bulan, tahun)] = rows
+
+    return result
