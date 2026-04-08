@@ -191,6 +191,10 @@ JABATAN_RULE_MAP = {
     "TIM PENGADAAN": "STAF PELAKSANA",
     "BENDAHARA PEMBANTU": "STAF PELAKSANA",
     "CALON PEGAWAI": "STAF PELAKSANA",
+    "TAMU SETARA DIREKTUR BIDANG": "TAMU DIREKTUR BIDANG",
+    "TAMU SETARA MANAJER":         "MANAJER",
+    "TAMU SETARA SUPERVISOR":      "SUPERVISOR",
+    "TAMU SETARA STAF":            "STAF PELAKSANA",
     "KETUA DEWAN PENGAWAS": "DIREKTUR UTAMA",
     "ANGGOTA DEWAN PENGAWAS": "DIREKTUR BIDANG",
 }
@@ -333,7 +337,15 @@ def get_or_create_spd(visum_id: str, tanggal: date) -> dict:
     res_count = db.table("spd").select("nomor_spd")\
         .like("nomor_spd", f"%/{tahun}-O")\
         .execute()
-    urutan = len(res_count.data) + 1
+    if res_count.data:
+        max_urutan = max(
+            int(s["nomor_spd"].split("/")[0])
+            for s in res_count.data
+            if s["nomor_spd"].split("/")[0].isdigit()
+        )
+        urutan = max_urutan + 1
+    else:
+        urutan = 1
     nomor_spd = f"{urutan:04d}/1421002/10a-I/{bulan}/{tahun}-O"
     
     res_insert = db.table("spd").insert({

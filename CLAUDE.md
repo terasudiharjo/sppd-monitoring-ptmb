@@ -306,6 +306,29 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
     - `{"pegawai_id": "uuid", "nama": "..."}` (dari `import_histori_2026.py`)
     Normalisasi dilakukan sekali di awal dengan `p.get("id") or p.get("pegawai_id")` sebelum loop peserta.
 
+### ✅ Sudah selesai (per sesi 2026-04-08):
+
+**Bug Fix Penomoran (`pages/2_visum.py`, `utils/database.py`):**
+85. Bug nomor visum/SPD terulang — root cause: `len(data) + 1` (COUNT) bukan MAX. Data historis ada gap (visum 0021 skip) → COUNT=24 tapi MAX=25 → nomor 0025 bentrok.
+86. Fix `generate_nomor_visum()`: pakai `MAX(int(nomor.split("/")[0])) + 1` bukan `len(data) + 1`
+87. Fix `get_or_create_spd()`: idem untuk penomoran SPD
+
+**Fitur Peserta Tamu / Luar PTMB (`utils/database.py`, `pages/2_visum.py`):**
+88. `JABATAN_RULE_MAP` ditambah 4 entry jabatan tamu:
+    - `TAMU SETARA DIREKTUR BIDANG` → rule `TAMU DIREKTUR BIDANG` (tarif Dirbi, uang_representasi=0 — set di rule_sppd DB)
+    - `TAMU SETARA MANAJER` → rule `MANAJER`
+    - `TAMU SETARA SUPERVISOR` → rule `SUPERVISOR`
+    - `TAMU SETARA STAF` → rule `STAF PELAKSANA`
+    Semua jabatan tamu dibuat dengan `struktur_rkap = BANTUAN` → deduct RKAP ke bucket Bantuan otomatis
+89. Jabatan tamu dikosongkan di semua PDF (`format_jabatan_divisi()`, `get_divisi_label_surat_tugas()`, konstruksi peserta SPD) — hanya nama yang tampil, tanpa label "TAMU SETARA ..."
+90. Nomor Surat Tugas: angka urutan depan diganti `____` untuk diisi manual (`____/1421002/10a-I/IV/2026-F`) — karena sekper pakai Google Form, nomor tidak urut
+
+**Cara tambah orang luar PTMB:**
+1. Tambah divisi "Tamu / Luar PTMB" di Supabase (bidang: null, parent_id: null)
+2. Tambah jabatan via Kelola Jabatan di app (struktur_rkap: BANTUAN)
+3. Tambah 3 baris rule_sppd jabatan `TAMU DIREKTUR BIDANG` di Supabase (salin dari Dirbi, uang_representasi=0)
+4. Input orang luar via halaman Pegawai: NIP=`TAMU-001`, Nama=`Nama (Instansi)`, Divisi=Tamu/Luar PTMB
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas:

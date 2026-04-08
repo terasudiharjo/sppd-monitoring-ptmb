@@ -43,8 +43,11 @@ def format_jabatan_divisi(jabatan_nama, divisi_nama):
     - Supervisor → Spv - [nama divisi]
     - Staf/Pelaksana → Staf - [nama divisi]
     - Lainnya (Direktur, Kepala, Dewas) → jabatan apa adanya
+    - Tamu → string kosong (jabatan tidak ditampilkan di surat)
     Prefix "Divisi " / "Sub Divisi " di nama DB di-strip supaya tidak redundant.
     """
+    if jabatan_nama.upper().startswith("TAMU"):
+        return ""
     # Strip prefix bawaan DB: "Sub Divisi", "Sub.Divisi", "Divisi", dll (case-insensitive)
     div = re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", divisi_nama, flags=re.IGNORECASE).strip()
     div = div.title()
@@ -67,7 +70,10 @@ def get_divisi_label_surat_tugas(jabatan_nama: str, divisi_obj: dict, divisi_map
     - Spv / Staf / Pelaksana → nama divisi PARENT (strip prefix + title)
     - Manajer               → nama divisi sendiri (strip prefix + title)
     - Direksi / Dewas / dll → '-'
+    - Tamu                  → '' (kosong)
     """
+    if jabatan_nama.upper().startswith("TAMU"):
+        return ""
     if not divisi_obj or not isinstance(divisi_obj, dict):
         return "-"
     jab = jabatan_nama.lower()
@@ -120,7 +126,15 @@ def generate_nomor_visum() -> str:
     res = db.table("visum").select("nomor_visum")\
         .like("nomor_visum", f"%/{tahun}-{KODE_VISUM}")\
         .execute()
-    urutan = len(res.data) + 1
+    if res.data:
+        max_urutan = max(
+            int(v["nomor_visum"].split("/")[0])
+            for v in res.data
+            if v["nomor_visum"].split("/")[0].isdigit()
+        )
+        urutan = max_urutan + 1
+    else:
+        urutan = 1
     return f"{urutan:04d}/{KODE_STATIC}/{KODE_SEKPER}/{bulan}/{tahun}-{KODE_VISUM}"
 
 def format_rupiah(amount) -> str:
@@ -587,7 +601,7 @@ with tab3:
                 with col_p2:
                     if st.button("📋 Download Surat Tugas", use_container_width=True, key=f"btn_st_pdf_{visum_id}"):
                         data_st = {
-                            "nomor":    v["nomor_visum"].replace("-J", "-F"),
+                            "nomor":    "/".join(["____"] + v["nomor_visum"].replace("-J", "-F").split("/")[1:]),
                             "tanggal":  datetime.strptime(v["tanggal_visum"], "%Y-%m-%d").date() if v.get("tanggal_visum") else date.today(),
                             "pembuka":  (
                             _build_pembuka(v["disposisi"][0])
@@ -664,7 +678,7 @@ with tab3:
                                 bidang_resolved = bidang_raw.title() if bidang_raw else ""
                                 peserta_spd_raw.append({
                                     "nama":           peg.get("nama", "-"),
-                                    "jabatan":        jab.get("nama", "-"),
+                                    "jabatan":        "" if (jab.get("nama") or "").upper().startswith("TAMU") else jab.get("nama", "-"),
                                     "divisi_nama":    div.get("nama", "-"),
                                     "level":          jab.get("level", 0),
                                     "struktur_rkap":  jab.get("struktur_rkap", ""),
