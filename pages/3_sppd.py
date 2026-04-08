@@ -30,11 +30,14 @@ def _strip_div_prefix(nama: str) -> str:
 
 def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map: dict) -> str:
     """Format jabatan untuk judul & TTD PDF SPPD (tidak disingkat, title case).
+    - Tamu     → '' (kosong, tidak ditampilkan)
     - Manajer  → 'Manajer [parent divisi]'
     - Supervisor → 'Supervisor [own sub-divisi]'
     - Staf     → 'Staf [own sub-divisi]'
     - Lainnya  → jabatan.title()
     """
+    if jabatan_nama.upper().startswith("TAMU"):
+        return ""
     if not divisi_obj or not isinstance(divisi_obj, dict):
         return jabatan_nama.title()
     jab = jabatan_nama.lower()
@@ -261,7 +264,7 @@ with tab2:
                 pegawai_data.get("divisi"),
                 divisi_map_sppd,
             )
-            _jab_label = f"{_jab_fmt} PTMB" if _jab_fmt else "PTMB"
+            _jab_label = f"{_jab_fmt} PTMB" if _jab_fmt else ""
             base_data = {
                 "nama_pejabat":     _jab_label,
                 "nomor_spd":        spd_data.get("nomor_spd", "-"),

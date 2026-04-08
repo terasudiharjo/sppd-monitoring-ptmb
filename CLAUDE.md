@@ -329,6 +329,16 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 3. Tambah 3 baris rule_sppd jabatan `TAMU DIREKTUR BIDANG` di Supabase (salin dari Dirbi, uang_representasi=0)
 4. Input orang luar via halaman Pegawai: NIP=`TAMU-001`, Nama=`Nama (Instansi)`, Divisi=Tamu/Luar PTMB
 
+### ✅ Sudah selesai (per sesi 2026-04-08, sesi lanjutan):
+
+**Bug Fix Tamu & PDF (`pages/2_visum.py`, `pages/3_sppd.py`, `utils/pdf_generator.py`):**
+91. Jabatan tamu di SPD: warna teks sekarang hitam (bukan hijau/administrasi) — `_struktur_ke_kategori_spd()`: BANTUAN → return `5` (tidak ada di `SPD_ROW_COLORS` → hitam)
+92. Jabatan tamu di semua PDF SPPD (pencairan, realisasi, pernyataan biaya): kosong string, bukan "PTMB" — `format_jabatan_sppd_penerima()` tambah early return `""` untuk TAMU; `_jab_label` fallback dari `"PTMB"` → `""`
+93. Visum peserta ikut: tamu tidak lagi tampil `"()"` kosong — format `"Nama (Jabatan)"` diganti kondisional, kalau jabatan kosong hanya tampil `"Nama"`
+94. SPD tabel peserta: kolom **Nama** sekarang wrap text (sebelumnya hanya Jabatan yang wrap)
+95. Surat Tugas tabel peserta: kolom **NAMA** sekarang wrap text (sebelumnya hanya Jabatan & Divisi yang wrap)
+96. NIK dikosongkan di Surat Tugas untuk Tamu, Direksi, dan Dewas — cukup nama saja
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas:

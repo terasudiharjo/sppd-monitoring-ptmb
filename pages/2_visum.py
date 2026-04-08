@@ -102,8 +102,10 @@ def _struktur_ke_kategori_spd(struktur: str, bidang: str = "") -> int:
         return 4  # Dewan Pengawas — orange
     elif s in ("MANAJER", "SUPERVISOR", "STAF_PELAKSANA"):
         return 3 if "teknik" in b else 2  # Teknik=ungu, Administrasi=hijau
+    elif s == "BANTUAN":
+        return 5  # Bantuan — hitam (5 tidak ada di SPD_ROW_COLORS → default hitam)
     else:
-        return 2  # default administrasi/keuangan
+        return 5  # default hitam
 
 def _build_pembuka(disp: dict) -> str:
     """Bangun kalimat pembuka surat tugas dari data disposisi."""
@@ -584,7 +586,10 @@ with tab3:
                             "lama_hari":        f"{v['lama_hari']} hari",
                             "tgl_berangkat":    datetime.strptime(v["tanggal_berangkat"], "%Y-%m-%d").date(),
                             "tgl_kembali":      datetime.strptime(v["tanggal_kembali"],   "%Y-%m-%d").date(),
-                            "peserta_ikut":     [f"{p['nama'].title()} ({format_jabatan_divisi(p['jabatan'], p['divisi'])})" for p in peserta_pdf[1:]],
+                            "peserta_ikut":     [
+                                f"{p['nama'].title()} ({jab})" if (jab := format_jabatan_divisi(p['jabatan'], p['divisi'])) else p['nama'].title()
+                                for p in peserta_pdf[1:]
+                            ],
                             "ttd_nama":         "Dr. SAHARUDDIN, M.M.",
                         }
                         pdf_bytes = generate_visum(data_visum).read()
@@ -611,7 +616,11 @@ with tab3:
                             "peserta":  [
                                 {
                                     "nama":    pegawai_map[pid]["nama"].title(),
-                                    "nip":     pegawai_map[pid].get("nip", "-"),
+                                    "nip":     "" if (
+                                        (pegawai_map[pid].get("jabatan") or {}).get("nama", "").upper().startswith("TAMU")
+                                        or (pegawai_map[pid].get("jabatan") or {}).get("struktur_rkap", "") in
+                                           ("DIRUT","DIRUM","DIRTEK","DIROPS","DEWAS_KETUA","DEWAS_ANGGOTA","DEWAS_ANGGOTA_1","DEWAS_ANGGOTA_2")
+                                    ) else pegawai_map[pid].get("nip", "-"),
                                     "jabatan": format_jabatan_divisi(
                                         (pegawai_map[pid].get("jabatan") or {}).get("nama", "-"),
                                         (pegawai_map[pid].get("divisi") or {}).get("nama", "-"),

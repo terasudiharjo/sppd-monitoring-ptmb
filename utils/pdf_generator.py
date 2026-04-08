@@ -442,17 +442,20 @@ def _tabel_peserta_st(c, peserta, y):
         x += w
     y -= rh_hdr
 
-    # Data rows — tinggi dinamis sesuai wrap jabatan/divisi
+    # Data rows — tinggi dinamis sesuai wrap nama/jabatan/divisi
     for i, p in enumerate(peserta, 1):
-        jab_txt = p.get("jabatan", "")
-        div_txt = p.get("divisi", "-")
+        nama_txt = p.get("nama", "")
+        jab_txt  = p.get("jabatan", "")
+        div_txt  = p.get("divisi", "-")
 
         # Hitung tinggi cell yang butuh wrap
+        p_nama = Paragraph(nama_txt, wrap_style)
+        _, h_nama = p_nama.wrap(cw_nama - 2*pad, 200)
         p_jab = Paragraph(jab_txt, wrap_style)
         _, h_jab = p_jab.wrap(cw_jab - 2*pad, 200)
         p_div = Paragraph(div_txt, wrap_style)
         _, h_div = p_div.wrap(cw_div - 2*pad, 200)
-        rh = max(0.65*cm, h_jab + 2*pad, h_div + 2*pad)
+        rh = max(0.65*cm, h_nama + 2*pad, h_jab + 2*pad, h_div + 2*pad)
 
         x = MARGIN_L
         for j, w in enumerate(cw):
@@ -464,9 +467,11 @@ def _tabel_peserta_st(c, peserta, y):
             if j == 0:          # NO — center
                 c.setFont(FONT_NORMAL, 9)
                 c.drawCentredString(x + w/2, y - rh/2 - 3, str(i))
-            elif j == 1:        # NAMA — left
-                c.setFont(FONT_NORMAL, 9)
-                c.drawString(x + pad, y - rh/2 - 3, p.get("nama", ""))
+            elif j == 1:        # NAMA — wrap, vertical center
+                pg = Paragraph(nama_txt, wrap_style)
+                _, h_pg = pg.wrap(w - 2*pad, rh)
+                draw_y = (y - rh) + (rh - h_pg) / 2
+                pg.drawOn(c, x + pad, draw_y)
             elif j == 2:        # NIK — center
                 c.setFont(FONT_NORMAL, 9)
                 c.drawCentredString(x + w/2, y - rh/2 - 3, p.get("nip", "-"))
@@ -686,13 +691,17 @@ def _draw_spd(c, data):
         nonlocal y
         fnt = FONT_BOLD if bold else FONT_NORMAL
         txt_c = txt_color if txt_color and not header else colors.black
-        # Hitung tinggi row dinamis dari kolom jabatan (k=2)
-        jab_style = ParagraphStyle("jab_spd", fontName=fnt, fontSize=FONT_SIZE,
-                                   leading=12, textColor=txt_c)
+        nama_style = ParagraphStyle("nama_spd", fontName=fnt, fontSize=FONT_SIZE,
+                                    leading=12, textColor=txt_c)
+        jab_style  = ParagraphStyle("jab_spd",  fontName=fnt, fontSize=FONT_SIZE,
+                                    leading=12, textColor=txt_c)
+        # Hitung tinggi row dinamis dari kolom nama (k=1) dan jabatan (k=2)
         if not header and len(vals) > 2:
-            p_jab = Paragraph(str(vals[2]), jab_style)
-            _, h_jab = p_jab.wrap(cw_bot[2] - 0.4*cm, 200)
-            row_h = max(rh, h_jab + 0.2*cm)
+            p_nama = Paragraph(str(vals[1]), nama_style)
+            _, h_nama = p_nama.wrap(cw_bot[1] - 0.4*cm, 200)
+            p_jab  = Paragraph(str(vals[2]), jab_style)
+            _, h_jab  = p_jab.wrap(cw_bot[2] - 0.4*cm, 200)
+            row_h = max(rh, h_nama + 0.2*cm, h_jab + 0.2*cm)
         else:
             row_h = rh
         x = MARGIN_L
@@ -705,6 +714,12 @@ def _draw_spd(c, data):
             c.setFont(fnt, FONT_SIZE)
             if header:
                 c.drawCentredString(x + w/2, y - row_h + 0.18*cm, str(v))
+            elif k == 1:  # Nama — Paragraph wrap, vertikal center
+                p = Paragraph(str(v), nama_style)
+                _, h_pg = p.wrap(w - 0.4*cm, row_h)
+                draw_y = (y - row_h) + (row_h - h_pg) / 2
+                p.drawOn(c, x + 0.2*cm, draw_y)
+                c.setFillColor(txt_c)  # reset setelah Paragraph
             elif k == 2:  # Jabatan — Paragraph wrap, vertikal center
                 p = Paragraph(str(v), jab_style)
                 _, h_pg = p.wrap(w - 0.4*cm, row_h)
