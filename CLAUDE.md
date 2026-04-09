@@ -31,7 +31,8 @@ Aplikasi Monitoring SPPD/
 │   └── template_pdf/         # Template dokumen
 ├── setup/                    # Script import data awal
 └── check/                    # Script debug & validasi DB
-    └── cek_tabel.py          # Lihat semua tabel Supabase (jalankan dari folder check/)
+    ├── cek_tabel.py          # Lihat semua tabel Supabase (jalankan dari folder check/)
+    └── cek_sppd_anomali.py   # Cek SPPD nilai 0 + total_hari tidak sesuai visum; FIX_TOTAL_HARI=True untuk auto-fix
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -345,16 +346,44 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 97. Tab 3 Detail & Edit: tambah expander **"✏️ Edit Tanggal Visum"** — edit `tanggal_visum`, `tanggal_berangkat`, `tanggal_kembali` langsung dari UI; `lama_hari` dihitung ulang otomatis saat save; hanya muncul untuk visum non-completed/cancelled
 98. Helper `fmt_tgl_indo(tgl_str)` — format tampilan tanggal `YYYY-MM-DD` → `DD/MM/YYYY` di Tab 1 (tabel daftar visum) dan Tab 3 (info detail visum)
 
+### ✅ Sudah selesai (per sesi 2026-04-09, sesi lanjutan):
+
+**Refaktor alur SPD — buat SPD dulu, visum pilih SPD (`pages/2_visum.py`, `utils/database.py`, `pages/3_sppd.py`):**
+99. Alur baru: SPD dibuat pre-emptif → visum pilih SPD saat dibuat → SPPD masuk ke SPD yang dipilih
+100. `database.py` — fungsi baru: `create_spd_baru(tanggal)`, `get_spd_by_id(spd_id)`, `get_spd_list_semua()`, `assign_visum_ke_spd(visum_id, spd_id_baru)`
+101. `database.py` — helper baru: `_generate_nomor_spd(tanggal)` — shared oleh `create_spd_baru` dan `get_or_create_spd` (legacy)
+102. `database.py` — `auto_buat_semua_sppd` & `sync_sppd_peserta` terima `spd_id` dari luar (tidak auto-create SPD sendiri)
+103. `database.py` — `buat_sppd_untuk_pegawai`: duplicate check diubah dari `spd_id+pegawai_id` → `visum_id+pegawai_id` (agar satu pegawai bisa ada di beberapa visum dalam SPD yang sama)
+104. `database.py` — `cancel_semua_sppd_visum`: cari SPPD by `visum_id` langsung (bukan via `spd.visum_id`), call `update_rekap_spd` per SPD terdampak
+105. `database.py` — `JABATAN_RULE_MAP` & `JABATAN_SORT_ORDER`: tambah entry `ANGGOTA DEWAN PENGAWAS 1` dan `ANGGOTA DEWAN PENGAWAS 2` → map ke rule `DIREKTUR BIDANG`
+106. `2_visum.py` — Tab baru **"📁 Kelola SPD"**: form buat SPD (tanggal → nomor auto), daftar SPD + jumlah visum, form **Assign Visum ke SPD** (mapping historis + koreksi)
+107. `2_visum.py` — Tab 2 "Buat Visum Baru": dropdown "Pilih SPD" wajib diisi sebelum form
+108. `2_visum.py` — Tab 3 edit peserta: ambil `spd_id` dari sppd existing, pass ke `sync_sppd_peserta`
+109. `2_visum.py` — Lookup SPD untuk PDF: cari via `sppd.spd_id` bukan via `spd.visum_id` (karena visum_id di SPD kini optional)
+110. `2_visum.py` — `cek_bisa_complete`: query SPPD by `visum_id` langsung, bukan via `spd.visum_id`
+111. `3_sppd.py` — Tab 2 filter SPD: dari `if s.get("visum") and status != completed` → filter by `spd.status != completed` langsung (fix bug SPD tanpa visum_id tidak muncul)
+112. `check/cek_sppd_anomali.py` — script baru: cek SPPD nilai 0 + SPPD `total_hari` beda dari `visum.lama_hari`; flag `FIX_TOTAL_HARI=True` untuk auto-fix
+
+**Catatan penting alur baru:**
+- `spd.visum_id` tetap ada di DB (nullable) — tidak di-ALTER. `get_or_create_spd` dipertahankan sebagai legacy untuk script import lama.
+- Satu SPD bisa menampung banyak visum. Satu visum tetap hanya ke satu SPD.
+- Fitur "Assign Visum ke SPD" di Tab Kelola SPD: update `sppd.spd_id` + `sppd.nomor_sppd`, call `update_rekap_spd` untuk SPD lama dan baru.
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
-#### Prioritas:
-1. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing sesuai review
+#### Prioritas (data fix — kerjakan awal sesi):
+1. **SPPD visum ke Bali (Dewas 1 & 2) nilai masih 0** — sudah fix rule di `JABATAN_RULE_MAP`, tapi SPPD yang sudah terlanjur dibuat perlu dihapus dan dibuat ulang via Tab 3 Edit Peserta di halaman Visum (hapus → tambah lagi → SPPD baru otomatis dengan nilai benar)
+2. **SPPD visum nomor 27 — nilai masih gede (terhitung 35 hari)** — `total_hari` di DB sudah diubah manual jadi 4, tapi kolom biaya (`uang_harian_total`, `uang_makan_total`, `transport_lokal_total`, `subtotal_uang_saku`, `total_biaya`) masih terhitung dari 35 hari. Perlu update semua kolom biaya di Supabase SQL Editor untuk record SPPD yang `visum_id` = visum nomor 27. Rumus: nilai_per_hari × 4. Jalankan `check/cek_sppd_anomali.py` dulu untuk lihat ID record yang terdampak.
+3. **Cek SPPD dengan `rkap_id` kosong (NULL)** — kemungkinan rule RKAP tidak ketemu saat SPPD dibuat (mirip masalah rule dewas). Jalankan query di Supabase: `SELECT id, nomor_sppd, pegawai_id, status FROM sppd WHERE rkap_id IS NULL AND status != 'cancelled';` lalu analisis penyebabnya.
+
+#### Prioritas (fitur):
+4. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing sesuai review
 
 #### Opsional:
-2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
-3. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter)
-4. **Manual**: tambah NURWAHYU ISLAMIATI ke pegawai (NIK perlu dikonfirmasi, duplikat 2531 di CSV)
-5. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
+5. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
+6. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter)
+7. **Manual**: tambah NURWAHYU ISLAMIATI ke pegawai (NIK perlu dikonfirmasi, duplikat 2531 di CSV)
+8. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
 
 ---
 

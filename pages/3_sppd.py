@@ -122,23 +122,21 @@ with tab1:
 with tab2:
     st.subheader("Detail SPPD & Input Realisasi")
 
-    # Ambil SPD — filter out visum completed
+    # Ambil SPD aktif (bukan completed) — tidak join visum karena SPD bisa multi-visum / tanpa visum_id
     res_spd = db.table("spd")\
-        .select("*, visum(id, nomor_visum, tujuan, tanggal_berangkat, tanggal_kembali, status)")\
+        .select("id, nomor_spd, tanggal_spd, status")\
+        .neq("status", "completed")\
         .order("created_at", desc=True)\
         .execute()
 
-    spd_data_all = [
-        s for s in res_spd.data
-        if s.get("visum") and s["visum"].get("status") != "completed"
-    ]
+    spd_data_all = res_spd.data or []
 
     if not spd_data_all:
         st.info("Tidak ada SPPD aktif.")
     else:
         # ── Pilih SPD ──
         spd_options = {
-            f"{s['nomor_spd']} — {s['visum']['tujuan'] if s.get('visum') else '-'}": s
+            f"{s['nomor_spd']}": s
             for s in spd_data_all
         }
         spd_keys = list(spd_options.keys())

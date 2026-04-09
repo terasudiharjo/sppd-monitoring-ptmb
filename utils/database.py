@@ -195,8 +195,10 @@ JABATAN_RULE_MAP = {
     "TAMU SETARA MANAJER":         "MANAJER",
     "TAMU SETARA SUPERVISOR":      "SUPERVISOR",
     "TAMU SETARA STAF":            "STAF PELAKSANA",
-    "KETUA DEWAN PENGAWAS": "DIREKTUR UTAMA",
-    "ANGGOTA DEWAN PENGAWAS": "DIREKTUR BIDANG",
+    "KETUA DEWAN PENGAWAS":    "DIREKTUR UTAMA",
+    "ANGGOTA DEWAN PENGAWAS":  "DIREKTUR BIDANG",
+    "ANGGOTA DEWAN PENGAWAS 1": "DIREKTUR BIDANG",
+    "ANGGOTA DEWAN PENGAWAS 2": "DIREKTUR BIDANG",
 }
 
 # Urutan sort untuk Rekap SPD (level jabatan, makin kecil = makin atas)
@@ -205,8 +207,10 @@ JABATAN_SORT_ORDER = {
     "DIREKTUR BIDANG UMUM": 2,
     "DIREKTUR OPERASIONAL": 2,
     "DIREKTUR TEKNIK": 2,
-    "KETUA DEWAN PENGAWAS": 3,
-    "ANGGOTA DEWAN PENGAWAS": 4,
+    "KETUA DEWAN PENGAWAS":    3,
+    "ANGGOTA DEWAN PENGAWAS":  4,
+    "ANGGOTA DEWAN PENGAWAS 1": 4,
+    "ANGGOTA DEWAN PENGAWAS 2": 4,
     "MANAJER": 5,
     "STAF AHLI BIDANG HUKUM DAN ASET PERUSAHAAN": 5,
     "SUPERVISOR": 6,
@@ -325,36 +329,66 @@ def resolve_kategori_rkap(struktur_rkap: str, bidang_resolved: str, lokasi_id: s
 
 BULAN_ROMAWI = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"]
 
-def get_or_create_spd(visum_id: str, tanggal: date) -> dict:
-    """Ambil SPD yang sudah ada untuk visum ini, kalau belum ada buat baru."""
+def _generate_nomor_spd(tanggal: date) -> str:
+    """Generate nomor SPD berikutnya (MAX+1) untuk tahun tertentu."""
     db = get_client()
-    res = db.table("spd").select("*").eq("visum_id", visum_id).execute()
-    if res.data:
-        return res.data[0]
-    
     tahun = tanggal.year
     bulan = BULAN_ROMAWI[tanggal.month - 1]
-    res_count = db.table("spd").select("nomor_spd")\
-        .like("nomor_spd", f"%/{tahun}-O")\
-        .execute()
-    if res_count.data:
+    res = db.table("spd").select("nomor_spd").like("nomor_spd", f"%/{tahun}-O").execute()
+    if res.data:
         max_urutan = max(
             int(s["nomor_spd"].split("/")[0])
-            for s in res_count.data
+            for s in res.data
             if s["nomor_spd"].split("/")[0].isdigit()
         )
         urutan = max_urutan + 1
     else:
         urutan = 1
-    nomor_spd = f"{urutan:04d}/1421002/10a-I/{bulan}/{tahun}-O"
-    
+    return f"{urutan:04d}/1421002/10a-I/{bulan}/{tahun}-O"
+
+
+def create_spd_baru(tanggal: date) -> dict:
+    """Buat SPD baru tanpa visum_id (pre-create sebelum visum)."""
+    db = get_client()
+    nomor_spd = _generate_nomor_spd(tanggal)
+    res = db.table("spd").insert({
+        "nomor_spd": nomor_spd,
+        "tanggal_spd": str(tanggal),
+        "status": "draft"
+    }).execute()
+    return res.data[0]
+
+
+def get_spd_by_id(spd_id: str) -> dict:
+    """Ambil satu SPD by id."""
+    db = get_client()
+    res = db.table("spd").select("*").eq("id", spd_id).single().execute()
+    return res.data
+
+
+def get_spd_list_semua() -> list:
+    """Ambil semua SPD, urut terbaru dulu — untuk dropdown."""
+    db = get_client()
+    res = db.table("spd").select("id, nomor_spd, tanggal_spd, status")\
+        .order("tanggal_spd", desc=True).execute()
+    return res.data or []
+
+
+def get_or_create_spd(visum_id: str, tanggal: date) -> dict:
+    """Legacy: Ambil SPD yang sudah ada untuk visum ini, kalau belum ada buat baru.
+    Dipertahankan untuk backward-compatibility (import script lama, dsb).
+    """
+    db = get_client()
+    res = db.table("spd").select("*").eq("visum_id", visum_id).execute()
+    if res.data:
+        return res.data[0]
+    nomor_spd = _generate_nomor_spd(tanggal)
     res_insert = db.table("spd").insert({
         "nomor_spd": nomor_spd,
         "visum_id": visum_id,
         "tanggal_spd": str(tanggal),
         "status": "draft"
     }).execute()
-    
     return res_insert.data[0]
 
 
@@ -365,10 +399,10 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
     """
     db = get_client()
 
-    # Cek apakah SPPD sudah ada (non-cancelled)
+    # Cek apakah SPPD sudah ada untuk pegawai ini di visum ini (non-cancelled)
     res_cek = db.table("sppd")\
         .select("id")\
-        .eq("spd_id", spd["id"])\
+        .eq("visum_id", visum["id"])\
         .eq("pegawai_id", pegawai_id)\
         .neq("status", "cancelled")\
         .execute()
@@ -433,36 +467,36 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
         return {"success": False, "pesan": str(e), "sppd_id": None}
 
 
-def auto_buat_semua_sppd(visum: dict, lokasi_id: str) -> list:
+def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:
     """
     Buat SPPD otomatis untuk semua peserta visum.
-    Dipanggil saat visum baru disimpan.
+    spd_id: ID SPD yang sudah dipilih/dibuat sebelumnya.
     Return: list of result dict per pegawai.
     """
     peserta_ids = visum.get("peserta") or []
     if not peserta_ids:
         return []
 
-    tgl_visum = date.fromisoformat(visum.get("tanggal_visum") or str(date.today()))
-    spd = get_or_create_spd(visum["id"], tgl_visum)
+    spd = get_spd_by_id(spd_id)
+    if not spd:
+        return [{"pegawai_id": p, "success": False, "pesan": "SPD tidak ditemukan"} for p in peserta_ids]
 
     results = []
     for pegawai_id in peserta_ids:
         result = buat_sppd_untuk_pegawai(pegawai_id, visum, spd, lokasi_id)
         results.append({"pegawai_id": pegawai_id, **result})
 
-    # Update rekap SPD setelah semua SPPD dibuat
     update_rekap_spd(spd["id"])
-
     return results
 
 
-def sync_sppd_peserta(visum: dict, peserta_baru: list, lokasi_id: str) -> dict:
+def sync_sppd_peserta(visum: dict, peserta_baru: list, lokasi_id: str, spd_id: str) -> dict:
     """
     Sinkronisasi SPPD saat peserta visum diedit.
     - Peserta baru ditambahkan → buat SPPD baru
-    - Peserta dihapus → cancel SPPD (hanya kalau status draft/pencairan)
-    
+    - Peserta dihapus → cancel SPPD milik visum ini (hanya kalau status draft/pencairan)
+    spd_id: ID SPD yang dipakai visum ini.
+
     Return: {"ditambah": [...], "dihapus": [...], "diblok": [...]}
     """
     db = get_client()
@@ -474,31 +508,30 @@ def sync_sppd_peserta(visum: dict, peserta_baru: list, lokasi_id: str) -> dict:
 
     hasil = {"ditambah": [], "dihapus": [], "diblok": []}
 
-    # Ambil atau buat SPD
-    tgl_visum = date.fromisoformat(visum.get("tanggal_visum") or str(date.today()))
-    spd = get_or_create_spd(visum_id, tgl_visum)
+    spd = get_spd_by_id(spd_id)
+    if not spd:
+        return hasil
 
     # Tambah SPPD untuk peserta baru
     for pid in ditambah_ids:
         result = buat_sppd_untuk_pegawai(pid, visum, spd, lokasi_id)
         hasil["ditambah"].append({"pegawai_id": pid, **result})
 
-    # Cancel SPPD untuk peserta yang dihapus
+    # Cancel SPPD untuk peserta yang dihapus — filter by visum_id agar tidak kena sppd dari visum lain
     for pid in dihapus_ids:
         res_sppd = db.table("sppd")\
             .select("id, status, rkap_id, subtotal_uang_saku, total_biaya")\
-            .eq("spd_id", spd["id"])\
+            .eq("visum_id", visum_id)\
             .eq("pegawai_id", pid)\
             .neq("status", "cancelled")\
             .execute()
-        
+
         if not res_sppd.data:
             continue
 
         s = res_sppd.data[0]
         status = s["status"]
 
-        # Block kalau status realisasi atau completed
         if status in ["realisasi", "completed"]:
             hasil["diblok"].append({
                 "pegawai_id": pid,
@@ -506,46 +539,40 @@ def sync_sppd_peserta(visum: dict, peserta_baru: list, lokasi_id: str) -> dict:
             })
             continue
 
-        # Rollback RKAP kalau status pencairan
         if status == "pencairan" and s.get("rkap_id"):
             rollback_rkap(s["rkap_id"], s.get("subtotal_uang_saku") or 0)
 
-        # Cancel SPPD
         db.table("sppd").update({"status": "cancelled"})\
             .eq("id", s["id"]).execute()
-        
+
         hasil["dihapus"].append({"pegawai_id": pid, "pesan": "SPPD di-cancel"})
 
-    # Update rekap SPD
     update_rekap_spd(spd["id"])
-
     return hasil
 
 
 def cancel_semua_sppd_visum(visum_id: str) -> dict:
     """
     Cancel semua SPPD dalam visum (saat visum di-cancel).
+    Hanya cancel SPPD milik visum ini — tidak ikut cancel SPPD visum lain yang kebetulan satu SPD.
     Block kalau ada SPPD yang sudah realisasi/completed.
     Return: {"success": bool, "diblok": [...], "dicancelled": int}
     """
     db = get_client()
 
-    # Cari SPD untuk visum ini
-    res_spd = db.table("spd").select("id").eq("visum_id", visum_id).execute()
-    if not res_spd.data:
-        return {"success": True, "diblok": [], "dicancelled": 0}
-
-    spd_id = res_spd.data[0]["id"]
-
-    # Ambil semua SPPD aktif
+    # Cari SPPD langsung by visum_id (tidak perlu via spd.visum_id)
     res_sppd = db.table("sppd")\
-        .select("id, status, rkap_id, subtotal_uang_saku, total_biaya")\
-        .eq("spd_id", spd_id)\
+        .select("id, status, rkap_id, subtotal_uang_saku, total_biaya, spd_id")\
+        .eq("visum_id", visum_id)\
         .neq("status", "cancelled")\
         .execute()
 
+    if not res_sppd.data:
+        return {"success": True, "diblok": [], "dicancelled": 0}
+
     diblok = []
     dicancelled = 0
+    spd_ids_terdampak = set()
 
     for s in res_sppd.data:
         if s["status"] in ["realisasi", "completed"]:
@@ -562,6 +589,12 @@ def cancel_semua_sppd_visum(visum_id: str) -> dict:
         db.table("sppd").update({"status": "cancelled"})\
             .eq("id", s["id"]).execute()
         dicancelled += 1
+        if s.get("spd_id"):
+            spd_ids_terdampak.add(s["spd_id"])
+
+    # Update rekap untuk semua SPD yang terdampak
+    for spd_id in spd_ids_terdampak:
+        update_rekap_spd(spd_id)
 
     return {
         "success": len(diblok) == 0,
@@ -625,6 +658,44 @@ def update_rekap_spd(spd_id: str):
     
     rekap["grand_total"] = sum(rekap.values())
     db.table("spd").update(rekap).eq("id", spd_id).execute()
+
+
+def assign_visum_ke_spd(visum_id: str, spd_id_baru: str) -> dict:
+    """
+    Pindahkan semua SPPD dari suatu visum ke SPD yang dipilih.
+    Update spd_id + nomor_sppd di semua sppd dengan visum_id tsb.
+    Berguna untuk mapping data historis atau koreksi salah assign.
+    Return: {"updated": int, "pesan": str}
+    """
+    db = get_client()
+    spd_baru = get_spd_by_id(spd_id_baru)
+    if not spd_baru:
+        return {"updated": 0, "pesan": "SPD tidak ditemukan"}
+
+    res_sppd = db.table("sppd").select("id, spd_id")\
+        .eq("visum_id", visum_id).execute()
+    if not res_sppd.data:
+        return {"updated": 0, "pesan": "Tidak ada SPPD untuk visum ini"}
+
+    # Kumpulkan spd_id lama yang berbeda dari SPD baru
+    spd_ids_lama = list({
+        s["spd_id"] for s in res_sppd.data
+        if s.get("spd_id") and s["spd_id"] != spd_id_baru
+    })
+
+    # Update semua SPPD visum ini ke SPD baru
+    db.table("sppd").update({
+        "spd_id":    spd_id_baru,
+        "nomor_sppd": spd_baru["nomor_spd"],
+    }).eq("visum_id", visum_id).execute()
+
+    # Update rekap SPD lama dan baru
+    for sid in spd_ids_lama:
+        update_rekap_spd(sid)
+    update_rekap_spd(spd_id_baru)
+
+    jumlah = len(res_sppd.data)
+    return {"updated": jumlah, "pesan": f"{jumlah} SPPD dipindah ke {spd_baru['nomor_spd']}"}
 
 
 # ─── HOTEL & BIAYA LAIN ────────────────────────────────
