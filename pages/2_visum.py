@@ -139,6 +139,15 @@ def generate_nomor_visum() -> str:
         urutan = 1
     return f"{urutan:04d}/{KODE_STATIC}/{KODE_SEKPER}/{bulan}/{tahun}-{KODE_VISUM}"
 
+def fmt_tgl_indo(tgl_str: str) -> str:
+    """Format YYYY-MM-DD → DD/MM/YYYY (format Indonesia)."""
+    if not tgl_str:
+        return "-"
+    try:
+        return datetime.strptime(tgl_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return tgl_str
+
 def format_rupiah(amount) -> str:
     if not amount:
         return "Rp 0"
@@ -205,8 +214,8 @@ with tab1:
         df = pd.DataFrame([{
             "Nomor Visum": v["nomor_visum"],
             "Tujuan": v["tujuan"],
-            "Berangkat": v["tanggal_berangkat"],
-            "Kembali": v["tanggal_kembali"],
+            "Berangkat": fmt_tgl_indo(v["tanggal_berangkat"]),
+            "Kembali": fmt_tgl_indo(v["tanggal_kembali"]),
             "Lama": f"{v['lama_hari']} hari",
             "Peserta": len(v.get("peserta") or []),
             "Disposisi": f"📎 {len(v.get('disposisi') or [])} surat" if v.get("disposisi") else "-",
@@ -377,10 +386,46 @@ with tab3:
                 col3.metric("Status", v["status"].upper())
 
                 st.markdown(f"**Keperluan:** {v['keperluan']}")
-                st.markdown(f"**Berangkat:** {v['tanggal_berangkat']} → **Kembali:** {v['tanggal_kembali']}")
+                st.markdown(f"**Berangkat:** {fmt_tgl_indo(v['tanggal_berangkat'])} → **Kembali:** {fmt_tgl_indo(v['tanggal_kembali'])}")
 
                 lokasi_info = detect_lokasi(v["tujuan"])
                 st.info(f"📍 Lokasi: **{lokasi_info['lokasi_nama']}**")
+
+                # ── Edit Tanggal ──
+                if v["status"] not in ["completed", "cancelled"]:
+                    with st.expander("✏️ Edit Tanggal Visum"):
+                        with st.form(f"form_edit_tanggal_{visum_id}"):
+                            col_t1, col_t2, col_t3 = st.columns(3)
+                            with col_t1:
+                                edit_tgl_visum = st.date_input(
+                                    "Tanggal Surat",
+                                    value=datetime.strptime(v["tanggal_visum"], "%Y-%m-%d").date()
+                                          if v.get("tanggal_visum") else date.today()
+                                )
+                            with col_t2:
+                                edit_tgl_berangkat = st.date_input(
+                                    "Tanggal Berangkat",
+                                    value=datetime.strptime(v["tanggal_berangkat"], "%Y-%m-%d").date()
+                                )
+                            with col_t3:
+                                edit_tgl_kembali = st.date_input(
+                                    "Tanggal Kembali",
+                                    value=datetime.strptime(v["tanggal_kembali"], "%Y-%m-%d").date()
+                                )
+                            simpan_tgl = st.form_submit_button("💾 Simpan Tanggal", use_container_width=True)
+                            if simpan_tgl:
+                                if edit_tgl_kembali < edit_tgl_berangkat:
+                                    st.error("❌ Tanggal kembali tidak boleh sebelum tanggal berangkat!")
+                                else:
+                                    lama_baru = (edit_tgl_kembali - edit_tgl_berangkat).days + 1
+                                    db.table("visum").update({
+                                        "tanggal_visum":     str(edit_tgl_visum),
+                                        "tanggal_berangkat": str(edit_tgl_berangkat),
+                                        "tanggal_kembali":   str(edit_tgl_kembali),
+                                        "lama_hari":         lama_baru,
+                                    }).eq("id", visum_id).execute()
+                                    st.success(f"✅ Tanggal diperbarui! Lama: {lama_baru} hari.")
+                                    st.rerun()
 
                 # ── Surat Disposisi ──
                 st.markdown("---")
