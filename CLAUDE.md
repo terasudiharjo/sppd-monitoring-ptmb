@@ -339,6 +339,12 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 95. Surat Tugas tabel peserta: kolom **NAMA** sekarang wrap text (sebelumnya hanya Jabatan & Divisi yang wrap)
 96. NIK dikosongkan di Surat Tugas untuk Tamu, Direksi, dan Dewas — cukup nama saja
 
+### ✅ Sudah selesai (per sesi 2026-04-09):
+
+**Visum (`2_visum.py`):**
+97. Tab 3 Detail & Edit: tambah expander **"✏️ Edit Tanggal Visum"** — edit `tanggal_visum`, `tanggal_berangkat`, `tanggal_kembali` langsung dari UI; `lama_hari` dihitung ulang otomatis saat save; hanya muncul untuk visum non-completed/cancelled
+98. Helper `fmt_tgl_indo(tgl_str)` — format tampilan tanggal `YYYY-MM-DD` → `DD/MM/YYYY` di Tab 1 (tabel daftar visum) dan Tab 3 (info detail visum)
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas:
