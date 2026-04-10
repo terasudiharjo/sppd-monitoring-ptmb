@@ -3,7 +3,7 @@ import streamlit as st
 from utils.database import (
     get_rkap_id, get_rule_sppd, detect_lokasi,
     deduct_rkap, rollback_rkap, update_rekap_spd,
-    JABATAN_SORT_ORDER,
+    JABATAN_SORT_ORDER, LOKASI_BANTUAN_ID,
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
@@ -320,10 +320,11 @@ with tab2:
                                     p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
                                     bidang = p["bidang"] if p else None
                                 kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
+                                rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else s["lokasi_id"]
                                 tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])
-                                    rkap_id = get_rkap_id(kategori, s["lokasi_id"], bulan, tahun)
+                                    rkap_id = get_rkap_id(kategori, rkap_lokasi_id, bulan, tahun)
                                     if rkap_id:
                                         db.table("sppd").update({"rkap_id": rkap_id}).eq("id", s["id"]).execute()
                         # Update status + menginap + hotel (kalau tidak menginap)
@@ -500,10 +501,11 @@ with tab2:
                                     p = db.table("divisi").select("bidang").eq("id", div["parent_id"]).single().execute().data
                                     bidang = p["bidang"] if p else None
                                 kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
+                                rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else s["lokasi_id"]
                                 tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])
-                                    rkap_id = get_rkap_id(kategori, s["lokasi_id"], bulan, tahun)
+                                    rkap_id = get_rkap_id(kategori, rkap_lokasi_id, bulan, tahun)
                                     if rkap_id:
                                         db.table("sppd").update({"rkap_id": rkap_id}).eq("id", s["id"]).execute()
 

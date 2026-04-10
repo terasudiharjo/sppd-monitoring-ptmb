@@ -303,7 +303,8 @@ def hitung_uang_saku(rule: dict, total_hari: int) -> dict:
         "subtotal": subtotal
     }
 
-LOKASI_LN_ID = "38663104-e5f5-473d-8227-640f025e595a"
+LOKASI_LN_ID     = "38663104-e5f5-473d-8227-640f025e595a"
+LOKASI_BANTUAN_ID = "6f7a80e0-1ca3-4e36-8d94-500bf8645efe"  # lokasi_id yg dipakai RKAP bantuan_sppd (Dalam Kaltim sebagai bucket non-LN)
 
 def resolve_kategori_rkap(struktur_rkap: str, bidang_resolved: str, lokasi_id: str = "") -> str:
     """Mapping struktur_rkap + bidang + lokasi → kategori_jabatan di tabel RKAP."""
@@ -436,10 +437,13 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
     struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
     bidang = pegawai.get("bidang_resolved", "") or ""
     kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id)
-    
+
+    # bantuan_sppd: RKAP rows pakai LOKASI_BANTUAN_ID sebagai bucket (bukan lokasi actual SPPD)
+    rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id
+
     bulan_berangkat = date.fromisoformat(visum["tanggal_berangkat"]).month
     tahun_berangkat = date.fromisoformat(visum["tanggal_berangkat"]).year
-    rkap_id = get_rkap_id(kategori, lokasi_id, bulan_berangkat, tahun_berangkat)
+    rkap_id = get_rkap_id(kategori, rkap_lokasi_id, bulan_berangkat, tahun_berangkat)
 
     # Insert SPPD
     try:
