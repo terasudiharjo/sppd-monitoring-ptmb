@@ -293,7 +293,7 @@ def hitung_uang_saku(rule: dict, total_hari: int) -> dict:
     uang_harian    = (rule.get("uang_saku") or 0) * total_hari
     uang_makan     = (rule.get("uang_makan") or 0) * total_hari
     transport_lokal = (rule.get("transport_lokal") or 0) * total_hari
-    uang_rep       = (rule.get("uang_rep") or 0) * total_hari
+    uang_rep       = (rule.get("uang_representasi") or 0) * total_hari
     subtotal       = uang_harian + uang_makan + transport_lokal + uang_rep
     return {
         "uang_harian": uang_harian,

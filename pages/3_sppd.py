@@ -229,8 +229,7 @@ with tab2:
                 st.markdown(f"- Uang Harian &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: **{format_rupiah(s.get('uang_harian_total', 0))}**")
                 st.markdown(f"- Uang Makan &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: **{format_rupiah(s.get('uang_makan_total', 0))}**")
                 st.markdown(f"- Transport Lokal &nbsp;: **{format_rupiah(s.get('transport_lokal_total', 0))}**")
-                if s.get("uang_representasi_total", 0) > 0:
-                    st.markdown(f"- Uang Representasi : **{format_rupiah(s.get('uang_representasi_total', 0))}**")
+                st.markdown(f"- Uang Representasi : **{format_rupiah(s.get('uang_representasi_total', 0))}**")
                 st.markdown(f"**Subtotal Uang Saku : {format_rupiah(s.get('subtotal_uang_saku', 0))}**")
 
             with col_r2:
