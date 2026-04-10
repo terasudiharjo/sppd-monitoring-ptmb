@@ -123,9 +123,10 @@ def _build_pembuka(disp: dict) -> str:
     return ", ".join(parts) if parts else ""
 
 # ─── HELPER ────────────────────────────────────────────
-def generate_nomor_visum() -> str:
-    tahun = date.today().year
-    bulan = BULAN_ROMAWI[date.today().month - 1]
+def generate_nomor_visum(tanggal: date = None) -> str:
+    tgl   = tanggal or date.today()
+    tahun = tgl.year
+    bulan = BULAN_ROMAWI[tgl.month - 1]
     res = db.table("visum").select("nomor_visum")\
         .like("nomor_visum", f"%/{tahun}-{KODE_VISUM}")\
         .execute()
@@ -323,7 +324,7 @@ with tab2:
                     lokasi_info = detect_lokasi(tujuan)
 
                     try:
-                        nomor_final = generate_nomor_visum()
+                        nomor_final = generate_nomor_visum(tanggal_visum)
 
                         res_visum = db.table("visum").insert({
                             "nomor_visum":       nomor_final,
@@ -702,7 +703,9 @@ with tab3:
                                 }
                                 for pid in sorted(
                                     [pid for pid in peserta_ids if pid in pegawai_map
-                                     and (pegawai_map[pid].get("jabatan") or {}).get("struktur_rkap") != "DIRUT"],
+                                     and (pegawai_map[pid].get("jabatan") or {}).get("struktur_rkap") not in
+                                         {"DIRUT","DEWAS_KETUA","DEWAS_ANGGOTA","DEWAS_ANGGOTA_1","DEWAS_ANGGOTA_2"}
+                                     and not (pegawai_map[pid].get("jabatan") or {}).get("nama", "").upper().startswith("TAMU")],
                                     key=lambda pid: (
                                         -(pegawai_map[pid].get("jabatan") or {}).get("level", 0),
                                         pegawai_map[pid].get("nip", "")
@@ -903,6 +906,53 @@ with tab4:
             "Jml Visum":   len(visum_per_spd.get(s["id"], set())),
         } for s in spd_semua])
         st.dataframe(df_spd, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # ── B2. Edit SPD Eksisting ──
+    st.markdown("#### ✏️ Edit SPD Eksisting")
+    st.caption("Gunakan ini untuk koreksi tanggal atau nomor SPD historis.")
+
+    if not spd_semua:
+        st.info("Belum ada data SPD.")
+    else:
+        spd_edit_options = {
+            f"{s['nomor_spd']} — {fmt_tgl_indo(s['tanggal_spd'])}": s
+            for s in spd_semua
+        }
+        spd_edit_key = st.selectbox(
+            "Pilih SPD yang akan diedit",
+            options=list(spd_edit_options.keys()),
+            key="edit_spd_select"
+        )
+        spd_edit = spd_edit_options[spd_edit_key]
+
+        with st.form("form_edit_spd"):
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                tgl_spd_edit = st.date_input(
+                    "Tanggal SPD",
+                    value=datetime.strptime(spd_edit["tanggal_spd"], "%Y-%m-%d").date()
+                )
+            with col_e2:
+                nomor_spd_edit = st.text_input(
+                    "Nomor SPD",
+                    value=spd_edit["nomor_spd"]
+                )
+            simpan_edit_spd = st.form_submit_button("💾 Simpan Perubahan SPD", use_container_width=True)
+            if simpan_edit_spd:
+                if not nomor_spd_edit.strip():
+                    st.error("❌ Nomor SPD tidak boleh kosong!")
+                else:
+                    try:
+                        db.table("spd").update({
+                            "tanggal_spd": str(tgl_spd_edit),
+                            "nomor_spd":   nomor_spd_edit.strip(),
+                        }).eq("id", spd_edit["id"]).execute()
+                        st.success(f"✅ SPD berhasil diupdate → **{nomor_spd_edit.strip()}** ({fmt_tgl_indo(str(tgl_spd_edit))})")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal update SPD: {e}")
 
     st.markdown("---")
 

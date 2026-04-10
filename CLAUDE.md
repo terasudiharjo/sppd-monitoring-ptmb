@@ -369,21 +369,23 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 - Satu SPD bisa menampung banyak visum. Satu visum tetap hanya ke satu SPD.
 - Fitur "Assign Visum ke SPD" di Tab Kelola SPD: update `sppd.spd_id` + `sppd.nomor_sppd`, call `update_rekap_spd` untuk SPD lama dan baru.
 
+### ✅ Sudah selesai (per sesi 2026-04-10, sesi lanjutan):
+
+**Visum & SPD (`pages/2_visum.py`):**
+113. `generate_nomor_visum(tanggal=None)` — kode bulan di nomor visum sekarang ikut `tanggal_visum` dari input form (bukan `date.today()`). Preview tetap pakai hari ini sebagai default.
+114. **Pengecualian Surat Tugas** — DIRUT + DEWAS (semua varian) + TAMU tidak masuk daftar peserta PDF Surat Tugas. Sebelumnya hanya DIRUT yang dikecualikan.
+115. **Edit SPD Eksisting** — Tab 4 "Kelola SPD" sekarang ada section "✏️ Edit SPD Eksisting": dropdown pilih SPD, edit tanggal dan nomor SPD secara manual, simpan langsung ke DB. Berguna untuk koreksi data historis.
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
-#### Prioritas (data fix — kerjakan awal sesi):
-1. **SPPD visum ke Bali (Dewas 1 & 2) nilai masih 0** — sudah fix rule di `JABATAN_RULE_MAP`, tapi SPPD yang sudah terlanjur dibuat perlu dihapus dan dibuat ulang via Tab 3 Edit Peserta di halaman Visum (hapus → tambah lagi → SPPD baru otomatis dengan nilai benar)
-2. **SPPD visum nomor 27 — nilai masih gede (terhitung 35 hari)** — `total_hari` di DB sudah diubah manual jadi 4, tapi kolom biaya (`uang_harian_total`, `uang_makan_total`, `transport_lokal_total`, `subtotal_uang_saku`, `total_biaya`) masih terhitung dari 35 hari. Perlu update semua kolom biaya di Supabase SQL Editor untuk record SPPD yang `visum_id` = visum nomor 27. Rumus: nilai_per_hari × 4. Jalankan `check/cek_sppd_anomali.py` dulu untuk lihat ID record yang terdampak.
-3. **Cek SPPD dengan `rkap_id` kosong (NULL)** — kemungkinan rule RKAP tidak ketemu saat SPPD dibuat (mirip masalah rule dewas). Jalankan query di Supabase: `SELECT id, nomor_sppd, pegawai_id, status FROM sppd WHERE rkap_id IS NULL AND status != 'cancelled';` lalu analisis penyebabnya.
-
 #### Prioritas (fitur):
-4. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing sesuai review
+1. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing sesuai review
 
 #### Opsional:
-5. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
-6. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter)
-7. **Manual**: tambah NURWAHYU ISLAMIATI ke pegawai (NIK perlu dikonfirmasi, duplikat 2531 di CSV)
-8. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
+2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
+3. **Sistem penomoran surat** — nomor Pernyataan Biaya Riil dari DB (counter)
+4. **Manual**: tambah NURWAHYU ISLAMIATI ke pegawai (NIK perlu dikonfirmasi, duplikat 2531 di CSV)
+5. **Test file PDF**: update `test_sppd_realisasi.py` (tambah `biaya_lain`) dan `test_sppd_pencairan.py` (skenario tidak menginap)
 
 ---
 
