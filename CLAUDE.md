@@ -71,9 +71,11 @@ utils/
 id, nomor_visum, tanggal_visum, tujuan, tanggal_berangkat, tanggal_kembali,
 lama_hari, keperluan, peserta (jsonb), status,
 disposisi (jsonb array) ← [{nomor, dari, perihal, link}, ...]
+tanpa_spd (BOOLEAN, default FALSE)
 ```
 → Bisa multi-surat disposisi per visum. Dipakai di Surat Tugas PDF (disposisi[0]).
 → `dari` = pengirim surat (opsional, backward compatible — data lama tanpa `dari` tetap jalan).
+→ `tanpa_spd = TRUE` → visum tidak punya SPD/SPPD (biaya tidak dari PTMB). Nomor visum tetap tercatat.
 
 ### Kolom penting `sppd`:
 ```
@@ -376,6 +378,19 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
 114. **Pengecualian Surat Tugas** — DIRUT + DEWAS (semua varian) + TAMU tidak masuk daftar peserta PDF Surat Tugas. Sebelumnya hanya DIRUT yang dikecualikan.
 115. **Edit SPD Eksisting** — Tab 4 "Kelola SPD" sekarang ada section "✏️ Edit SPD Eksisting": dropdown pilih SPD, edit tanggal dan nomor SPD secara manual, simpan langsung ke DB. Berguna untuk koreksi data historis.
 
+### ✅ Sudah selesai (per sesi 2026-04-13):
+
+**Visum (`2_visum.py`):**
+116. Reorder tab: "Kelola SPD" dipindah ke posisi 2 (sebelumnya posisi 4). Urutan baru: Daftar | Kelola SPD | Buat Baru | Detail & Edit
+117. **Fitur Visum Tanpa SPD** — untuk kasus perjalanan dinas tanpa pencairan dari PTMB (biaya ditanggung pihak lain):
+    - Tambah kolom `tanpa_spd BOOLEAN DEFAULT FALSE` di tabel `visum` (jalankan `ALTER TABLE visum ADD COLUMN tanpa_spd BOOLEAN DEFAULT FALSE` di Supabase)
+    - Tab 2 "Buat Visum Baru": checkbox "Tanpa SPD" → sembunyikan dropdown SPD, skip `auto_buat_semua_sppd()`
+    - Tab 3 detail: baca `v.get("tanpa_spd")` → tampil badge warning, sembunyikan tombol Download SPD
+    - Edit peserta visum tanpa SPD: update `visum.peserta` langsung tanpa `sync_sppd_peserta()`
+    - Cancel visum tanpa SPD: skip `cancel_semua_sppd_visum()` langsung update status
+    - `cek_bisa_complete(visum_id, tanpa_spd=False)`: jika `tanpa_spd=True` → return `(True, "")` langsung (boleh complete tanpa cek SPPD)
+    - Surat Tugas & Visum PDF tetap bisa di-download untuk visum tanpa SPD
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas (fitur):
@@ -451,6 +466,15 @@ Toggle menginap ada di **pencairan DAN realisasi**, tapi dengan perilaku berbeda
   - "ANGGOTA DEWAN PENGAWAS 2" → `struktur_rkap = "DEWAS_ANGGOTA_2"` → row RKAP `DEWAS_ANGGOTA_2`
 - Jabatan lama "ANGGOTA DEWAN PENGAWAS" (`struktur_rkap = "DEWAS_ANGGOTA"`) di-legacy fallback ke `DEWAS_ANGGOTA_1`
 - Jabatan baru ditambah via Tab "Kelola Jabatan" di halaman Pegawai
+
+### Visum Tanpa SPD
+- Kolom `visum.tanpa_spd BOOLEAN DEFAULT FALSE` — TRUE jika biaya perjalanan tidak dari PTMB
+- Semua visum lama otomatis `FALSE` → tidak ada efek ke data existing
+- Visum tanpa SPD: tidak ada SPPD record di tabel `sppd` untuk visum ini
+- Tab 3 detail: badge peringatan kuning, tombol Download SPD disembunyikan
+- Edit peserta: update `visum.peserta` langsung tanpa sync SPPD
+- Complete/Cancel: bisa langsung tanpa cek status SPPD
+- Surat Tugas & Visum PDF: tetap bisa di-download (perjalanan tetap perlu izin)
 
 ### Import Data Historis (untuk go-live)
 - File: `data/realisasi_sppd_2026.csv` — data Jan-Mar 2026 (rekap realisasi akhir per pegawai)
