@@ -177,7 +177,7 @@ def cek_bisa_complete(visum_id: str) -> tuple:
 st.title("📄 Manajemen Visum")
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Daftar Visum", "➕ Buat Visum Baru", "🔍 Detail & Edit Visum", "📁 Kelola SPD"])
+tab1, tab4, tab2, tab3 = st.tabs(["📋 Daftar Visum", "📁 Kelola SPD", "➕ Buat Visum Baru", "🔍 Detail & Edit Visum"])
 
 # ══════════════════════════════════════════════════════
 # TAB 1: DAFTAR VISUM
