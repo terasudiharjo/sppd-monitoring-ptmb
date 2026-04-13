@@ -159,7 +159,9 @@ def get_nama_pegawai(pegawai_id: str, pegawai_map: dict) -> str:
     p = pegawai_map.get(pegawai_id)
     return p["nama"] if p else pegawai_id
 
-def cek_bisa_complete(visum_id: str) -> tuple:
+def cek_bisa_complete(visum_id: str, tanpa_spd: bool = False) -> tuple:
+    if tanpa_spd:
+        return True, ""
     res_sppd = db.table("sppd").select("status")\
         .eq("visum_id", visum_id)\
         .neq("status", "cancelled")\
@@ -233,6 +235,8 @@ with tab2:
         hasil = st.session_state.visum_baru_berhasil
         st.success(f"✅ Visum **{hasil['nomor']}** berhasil dibuat!")
         st.info(f"📍 Lokasi: **{hasil['lokasi']}**")
+        if hasil.get("tanpa_spd"):
+            st.info("📋 Visum ini tidak menggunakan SPD — tidak ada SPPD yang dibuat.")
 
         if hasil.get("results"):
             pegawai_list_temp = get_all_pegawai()
@@ -254,22 +258,31 @@ with tab2:
         nomor_preview = generate_nomor_visum()
         st.info(f"📌 Nomor Visum: **{nomor_preview}**")
 
-        # ── Pilih SPD (wajib) ──
-        spd_list = get_spd_list_semua()
-        if not spd_list:
-            st.warning("⚠️ Belum ada SPD. Buat SPD terlebih dahulu di tab **📁 Kelola SPD**.")
-            st.stop()
-
-        spd_options = {
-            f"{s['nomor_spd']} — {s['tanggal_spd']}": s["id"]
-            for s in spd_list
-        }
-        spd_pilihan_key = st.selectbox(
-            "📁 Pilih SPD *",
-            options=list(spd_options.keys()),
-            help="SPD harus dibuat terlebih dahulu di tab Kelola SPD"
+        # ── Pilih SPD ──
+        tanpa_spd_check = st.checkbox(
+            "Tanpa SPD (perjalanan ini tidak ada pencairan dari PTMB)",
+            help="Centang jika biaya perjalanan ditanggung sepenuhnya oleh pihak lain. Nomor visum tetap tercatat, tapi tidak ada SPD/SPPD yang dibuat."
         )
-        spd_id_dipilih = spd_options[spd_pilihan_key]
+        spd_id_dipilih = None
+
+        if not tanpa_spd_check:
+            spd_list = get_spd_list_semua()
+            if not spd_list:
+                st.warning("⚠️ Belum ada SPD. Buat SPD terlebih dahulu di tab **📁 Kelola SPD**.")
+                st.stop()
+
+            spd_options = {
+                f"{s['nomor_spd']} — {s['tanggal_spd']}": s["id"]
+                for s in spd_list
+            }
+            spd_pilihan_key = st.selectbox(
+                "📁 Pilih SPD *",
+                options=list(spd_options.keys()),
+                help="SPD harus dibuat terlebih dahulu di tab Kelola SPD"
+            )
+            spd_id_dipilih = spd_options[spd_pilihan_key]
+        else:
+            st.info("ℹ️ Visum ini tidak menggunakan SPD — tidak ada pencairan SPPD dari PTMB.")
 
         pegawai_list   = get_all_pegawai()
         pegawai_options = {f"{p['nip']} - {p['nama']}": p["id"] for p in pegawai_list}
@@ -336,20 +349,25 @@ with tab2:
                             "keperluan":         keperluan,
                             "peserta":           peserta_ids,
                             "status":     "active",
+                            "tanpa_spd":  tanpa_spd_check,
                             "disposisi":  [{"nomor": nomor_disposisi, "dari": dari_disposisi, "perihal": perihal_disposisi, "link": link_disposisi}]
                                           if (nomor_disposisi or dari_disposisi or perihal_disposisi or link_disposisi) else [],
                         }).execute()
 
                         visum_baru = res_visum.data[0]
 
-                        with st.spinner("Membuat SPPD untuk semua peserta..."):
-                            results = auto_buat_semua_sppd(visum_baru, lokasi_info["lokasi_id"], spd_id_dipilih)
+                        if not tanpa_spd_check:
+                            with st.spinner("Membuat SPPD untuk semua peserta..."):
+                                results = auto_buat_semua_sppd(visum_baru, lokasi_info["lokasi_id"], spd_id_dipilih)
+                        else:
+                            results = []
 
                         # Simpan hasil ke session_state → rerun akan tampilkan halaman sukses (form ter-reset)
                         st.session_state["visum_baru_berhasil"] = {
-                            "nomor":   nomor_final,
-                            "lokasi":  lokasi_info["lokasi_nama"],
-                            "results": results
+                            "nomor":     nomor_final,
+                            "lokasi":    lokasi_info["lokasi_nama"],
+                            "results":   results,
+                            "tanpa_spd": tanpa_spd_check,
                         }
                         st.rerun()
 
@@ -393,6 +411,7 @@ with tab3:
             if selected:
                 v = visum_by_key[selected]
                 visum_id = v["id"]
+                is_tanpa_spd = v.get("tanpa_spd", False)
 
                 # ── Info Visum ──
                 col1, col2, col3 = st.columns(3)
@@ -405,6 +424,8 @@ with tab3:
 
                 lokasi_info = detect_lokasi(v["tujuan"])
                 st.info(f"📍 Lokasi: **{lokasi_info['lokasi_nama']}**")
+                if is_tanpa_spd:
+                    st.warning("📋 Visum ini **tidak menggunakan SPD** — tidak ada pencairan/realisasi SPPD dari PTMB.")
 
                 # ── Edit Tanggal ──
                 if v["status"] not in ["completed", "cancelled"]:
@@ -580,35 +601,42 @@ with tab3:
 
                     if ada_perubahan:
                         if st.button("💾 Simpan Perubahan Peserta", use_container_width=True):
-                            # Cari spd_id dari sppd yang sudah ada untuk visum ini
-                            res_sppd_spd = db.table("sppd").select("spd_id")\
-                                .eq("visum_id", visum_id).limit(1).execute()
-                            spd_id_visum = res_sppd_spd.data[0]["spd_id"] if res_sppd_spd.data else None
-                            if not spd_id_visum:
-                                st.error("❌ Tidak bisa sinkronisasi — visum ini belum punya SPD. Gunakan tab Kelola SPD untuk assign.")
-                                st.stop()
-                            with st.spinner("Sinkronisasi SPPD..."):
-                                hasil = sync_sppd_peserta(v, peserta_baru_ids, lokasi_info["lokasi_id"], spd_id_visum)
+                            if is_tanpa_spd:
+                                # Visum tanpa SPD — tidak ada SPPD yang perlu disinkronisasi
+                                db.table("visum").update({"peserta": peserta_baru_ids})\
+                                    .eq("id", visum_id).execute()
+                                st.success("✅ Peserta diperbarui.")
+                                st.rerun()
+                            else:
+                                # Cari spd_id dari sppd yang sudah ada untuk visum ini
+                                res_sppd_spd = db.table("sppd").select("spd_id")\
+                                    .eq("visum_id", visum_id).limit(1).execute()
+                                spd_id_visum = res_sppd_spd.data[0]["spd_id"] if res_sppd_spd.data else None
+                                if not spd_id_visum:
+                                    st.error("❌ Tidak bisa sinkronisasi — visum ini belum punya SPD. Gunakan tab Kelola SPD untuk assign.")
+                                    st.stop()
+                                with st.spinner("Sinkronisasi SPPD..."):
+                                    hasil = sync_sppd_peserta(v, peserta_baru_ids, lokasi_info["lokasi_id"], spd_id_visum)
 
-                            db.table("visum").update({"peserta": peserta_baru_ids})\
-                                .eq("id", visum_id).execute()
+                                db.table("visum").update({"peserta": peserta_baru_ids})\
+                                    .eq("id", visum_id).execute()
 
-                            for r in hasil["ditambah"]:
-                                nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
-                                if r["success"]:
-                                    st.success(f"✅ {nama} — SPPD dibuat")
-                                else:
-                                    st.warning(f"⚠️ {nama} — {r['pesan']}")
+                                for r in hasil["ditambah"]:
+                                    nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
+                                    if r["success"]:
+                                        st.success(f"✅ {nama} — SPPD dibuat")
+                                    else:
+                                        st.warning(f"⚠️ {nama} — {r['pesan']}")
 
-                            for r in hasil["dihapus"]:
-                                nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
-                                st.info(f"🗑️ {nama} — SPPD di-cancel")
+                                for r in hasil["dihapus"]:
+                                    nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
+                                    st.info(f"🗑️ {nama} — SPPD di-cancel")
 
-                            for r in hasil["diblok"]:
-                                nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
-                                st.error(f"🚫 {nama} — {r['pesan']}")
+                                for r in hasil["diblok"]:
+                                    nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
+                                    st.error(f"🚫 {nama} — {r['pesan']}")
 
-                            st.rerun()
+                                st.rerun()
                     else:
                         st.caption("Tidak ada perubahan peserta.")
 
@@ -803,7 +831,10 @@ with tab3:
                                 key=f"dl_spd_{visum_id}"
                             )
                     else:
-                        st.caption("SPD belum tersedia.")
+                        if is_tanpa_spd:
+                            st.caption("Visum ini tidak menggunakan SPD.")
+                        else:
+                            st.caption("SPD belum tersedia.")
 
                 st.markdown("---")
 
@@ -818,7 +849,7 @@ with tab3:
 
                 else:
                     status_tersedia = ["active", "cancelled"]
-                    bisa_complete, alasan_complete = cek_bisa_complete(visum_id)
+                    bisa_complete, alasan_complete = cek_bisa_complete(visum_id, tanpa_spd=is_tanpa_spd)
                     if bisa_complete:
                         status_tersedia.append("completed")
 
@@ -835,18 +866,24 @@ with tab3:
 
                     if update_btn:
                         if new_status == "cancelled":
-                            with st.spinner("Membatalkan semua SPPD..."):
-                                hasil_cancel = cancel_semua_sppd_visum(visum_id)
-
-                            if hasil_cancel["diblok"]:
-                                st.error("❌ Tidak bisa cancel visum — ada SPPD yang sudah REALISASI:")
-                                for blok in hasil_cancel["diblok"]:
-                                    st.error(f"   • {blok['pesan']}")
-                            else:
+                            if is_tanpa_spd:
                                 db.table("visum").update({"status": "cancelled"})\
                                     .eq("id", visum_id).execute()
-                                st.success(f"✅ Visum dibatalkan. {hasil_cancel['dicancelled']} SPPD di-cancel.")
+                                st.success("✅ Visum dibatalkan.")
                                 st.rerun()
+                            else:
+                                with st.spinner("Membatalkan semua SPPD..."):
+                                    hasil_cancel = cancel_semua_sppd_visum(visum_id)
+
+                                if hasil_cancel["diblok"]:
+                                    st.error("❌ Tidak bisa cancel visum — ada SPPD yang sudah REALISASI:")
+                                    for blok in hasil_cancel["diblok"]:
+                                        st.error(f"   • {blok['pesan']}")
+                                else:
+                                    db.table("visum").update({"status": "cancelled"})\
+                                        .eq("id", visum_id).execute()
+                                    st.success(f"✅ Visum dibatalkan. {hasil_cancel['dicancelled']} SPPD di-cancel.")
+                                    st.rerun()
                         else:
                             db.table("visum").update({"status": new_status})\
                                 .eq("id", visum_id).execute()
