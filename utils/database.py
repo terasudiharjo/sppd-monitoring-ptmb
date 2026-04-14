@@ -142,7 +142,8 @@ KOTA_DALAM_KALTIM = {
     "samarinda", "balikpapan", "bontang", "kutai kartanegara",
     "berau", "paser", "penajam paser utara", "mahakam ulu",
     "tenggarong", "sangatta", "tanjung redeb", "tanah grogot",
-    "penajam", "long bagun"
+    "penajam", "long bagun",
+    "ikn", "ibu kota nusantara", "nusantara",
 }
 
 LOKASI_DALAM = "6f7a80e0-1ca3-4e36-8d94-500bf8645efe"

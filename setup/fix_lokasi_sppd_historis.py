@@ -87,7 +87,7 @@ def main():
             "pegawai!sppd_pegawai_id_fkey(id, jabatan_id, jabatan(nama, struktur_rkap), "
             "divisi_id, divisi(id, parent_id, bidang))"
         )\
-        .eq("status", "completed")\
+        .in_("status", ["completed", "realisasi", "pencairan"])\
         .eq("lokasi_id", LOKASI_LUAR)\
         .execute()
 
