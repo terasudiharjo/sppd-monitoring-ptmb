@@ -391,6 +391,22 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
     - `cek_bisa_complete(visum_id, tanpa_spd=False)`: jika `tanpa_spd=True` → return `(True, "")` langsung (boleh complete tanpa cek SPPD)
     - Surat Tugas & Visum PDF tetap bisa di-download untuk visum tanpa SPD
 
+### ✅ Sudah selesai (per sesi 2026-04-14):
+
+**Bug Fix & Data Repair:**
+118. **Fix Tab Rekap SPD (`3_sppd.py`)** — dropdown Pilih SPD menampilkan tujuan "-" untuk SPD baru (alur baru: `spd.visum_id` tidak diisi). Fix: query tujuan visum lewat tabel `sppd` (bukan join `spd→visum`), build dict `spd_id→tujuan`.
+119. **Script `setup/fix_lokasi_sppd_historis.py` (NEW)** — repair data 29 SPPD completed yang salah lokasi:
+    - Root cause: `import_histori_2026.py` hardcode `lokasi_id = lokasi_luar` untuk semua SPPD tanpa memanggil `detect_lokasi()`
+    - Affected: visum tujuan Samarinda (8 visum) dan IKN (3 visum) → semua SPPD-nya tercatat Luar Kaltim
+    - Script: cari completed SPPD lokasi=Luar Kaltim yang visum tujuannya masuk `KOTA_DALAM`, lalu per SPPD:
+      1. Rollback RKAP lama (Luar Kaltim) sebesar `total_biaya`
+      2. Recalculate uang saku pakai rule Dalam Kaltim × `total_hari`
+      3. Update SPPD: `lokasi_id`, komponen uang saku, `total_biaya`, `rkap_id`
+      4. Deduct RKAP baru (Dalam Kaltim)
+    - `total_hotel` dan `total_transport` tidak diubah (biaya riil aktual)
+    - Sudah dieksekusi (`DRY_RUN=False`): 29 SPPD berhasil difix, 0 diskip
+    - Catatan: angka uang saku beberapa SPPD tidak berubah karena tarif DK=LK untuk jabatan tersebut, tapi `lokasi_id` dan `rkap_id` sudah benar (RKAP berpindah bucket dari Luar Kaltim ke Dalam Kaltim)
+
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
 #### Prioritas (fitur):
@@ -538,3 +554,178 @@ python test_connection.py
 - Helper `draw_wrapped()` di `pdf_generator.py` — pakai ReportLab Paragraph untuk auto-wrap + justify
 - `BULAN_ID` dict di `pdf_generator.py` — format bulan Indonesia (Januari, Februari, dst)
 - `fmt_tgl()` → "5 Januari 2026", `fmt_tgl_short()` → "05-Jan-2026"
+
+---
+
+## Referensi Cepat untuk Claude
+
+> Section ini dibuat agar Claude tidak perlu baca semua file dari awal setiap sesi.
+> Gunakan index di bawah untuk langsung tahu fungsi/lokasi yang relevan, lalu baca hanya file/bagian yang diperlukan.
+
+---
+
+### Index Fungsi per File
+
+#### `utils/database.py` (1000+ baris — jangan baca full, pakai index ini)
+
+| Fungsi | Keterangan |
+|---|---|
+| `get_client()` | Return Supabase client |
+| `get_all_pegawai()` | Semua pegawai aktif + jabatan + divisi |
+| `get_pegawai_by_id(id)` | Detail 1 pegawai |
+| `get_pegawai_by_jabatan_nama(nama)` | Pegawai by nama jabatan (untuk TTD PDF) |
+| `get_all_divisi()` | Semua divisi aktif (dengan parent_id) |
+| `get_all_jabatan()` | Semua jabatan aktif |
+| `detect_lokasi(kota)` | Auto-detect lokasi (Dalam/Luar Kaltim/LN) dari nama kota |
+| `get_rule_sppd(jabatan_id, lokasi_id)` | Tarif SPPD per jabatan per lokasi |
+| `get_plafon_hotel(jabatan_id, lokasi_id)` | Plafon hotel untuk hitung 30% tidak menginap |
+| `hitung_uang_saku(...)` | Hitung komponen uang saku (harian, makan, transport lokal, representasi) |
+| `resolve_kategori_rkap(struktur, bidang)` | Map struktur_rkap + bidang → kategori RKAP |
+| `get_rkap_id(kategori, lokasi_id, bulan, tahun)` | Cari UUID row RKAP |
+| `get_rkap_summary(tahun)` | Summary semua row RKAP untuk 1 tahun |
+| `deduct_rkap(rkap_id, amount)` | Kurangi saldo RKAP (saat pencairan) |
+| `rollback_rkap(rkap_id, amount)` | Kembalikan saldo RKAP (saat cancel) |
+| `_generate_nomor_spd(tanggal)` | Private helper: generate nomor SPD sequential |
+| `create_spd_baru(tanggal)` | Buat SPD baru tanpa visum (alur baru) |
+| `get_spd_by_id(id)` | Detail 1 SPD |
+| `get_spd_list_semua()` | Semua SPD (untuk dropdown assign) |
+| `get_or_create_spd(visum_id, tanggal)` | Legacy: cari/buat SPD by visum (dipakai script import) |
+| `assign_visum_ke_spd(visum_id, spd_id)` | Assign/reassign visum ke SPD berbeda |
+| `buat_sppd_untuk_pegawai(...)` | Buat 1 SPPD untuk 1 pegawai (hitung rule, deduct RKAP) |
+| `auto_buat_semua_sppd(visum_id, spd_id)` | Buat SPPD untuk semua peserta visum |
+| `sync_sppd_peserta(visum_id, spd_id, peserta)` | Sync SPPD saat daftar peserta berubah |
+| `cancel_semua_sppd_visum(visum_id)` | Cancel semua SPPD 1 visum + rollback RKAP |
+| `update_rekap_spd(spd_id)` | Hitung ulang total per kategori di tabel `spd` |
+| `get_all_sppd()` | Semua SPPD (join visum + pegawai) |
+| `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace strategy) |
+| `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
+| `save_transport_detail(sppd_id, items, tgl_b, tgl_k)` | Simpan rincian leg perjalanan (replace strategy) |
+| `get_transport_detail(sppd_id)` | Ambil rincian leg perjalanan |
+| `get_sppd_realisasi_laporan(bulan, tahun)` | Data realisasi grouped by visum (untuk halaman Laporan) |
+| `get_rekap_perjalanan(bulan_list)` | Count perjalanan per jabatan per lokasi per bulan |
+
+**Konstanta penting di `database.py`:**
+- `JABATAN_RULE_MAP` — dict: nama jabatan DB → nama rule tarif SPPD
+- `JABATAN_SORT_ORDER` — dict: nama jabatan → angka urutan (untuk sorting laporan)
+- `KOTA_DALAM_KALTIM` — set nama kota dalam Kaltim
+- `LOKASI_DALAM` / `LOKASI_LUAR` / `LOKASI_LN` — UUID 3 lokasi (hardcoded)
+- `KODE_STATIC = "1421002"`, `KODE_SEKPER = "10a-I"`, `KODE_VISUM = "J"`, `KODE_SPD = "O"`
+
+---
+
+#### `utils/pdf_generator.py` (2000+ baris — jangan baca full)
+
+| Fungsi | Keterangan |
+|---|---|
+| `fmt_tgl(tgl)` | Date → "5 Januari 2026" |
+| `fmt_tgl_short(tgl)` | Date → "05-Jan-2026" |
+| `fmt_waktu_surat_tugas(tgl_b, tgl_k)` | Range tanggal cerdas dengan nama hari Indonesia |
+| `fmt_rp(n)` / `fmt_rp2(n)` | Angka → "Rp 1.500.000" |
+| `draw_kop(c, y, lebar)` | Gambar kop surat + logo PTMB |
+| `draw_kop_box(c, ...)` | Kop dengan konten kiri/kanan |
+| `draw_footer(c)` | Footer halaman |
+| `draw_ttd(c, x, y, nama, jabatan)` | Blok tanda tangan (garis + nama + jabatan) |
+| `draw_wrapped(c, x, y, lebar, teks)` | Teks auto-wrap dengan justify (pakai ReportLab Paragraph) |
+| `generate_surat_tugas(data)` | PDF Surat Perintah Tugas (2 halaman) |
+| `generate_spd(data)` | PDF Surat Penyediaan Dana (1 halaman, warna teks per kategori) |
+| `generate_visum(data)` | PDF Visum Lembaran I & II (2 halaman) |
+| `generate_sppd_pencairan(data)` | PDF Tanda Terima Pencairan (1 halaman) |
+| `generate_sppd_realisasi(data)` | PDF Tanda Terima Realisasi (1 halaman) |
+| `generate_pernyataan_biaya(data)` | PDF Pernyataan Pengeluaran Biaya Riil (1 halaman) |
+| `generate_laporan_realisasi(data)` | PDF Laporan Realisasi bulanan (F4 landscape, merge cell per visum) |
+| `generate_rekap_bulanan(data)` | PDF Rekap Bulanan per jabatan per lokasi (F4 portrait) |
+| `generate_rekap_semester(data)` | PDF Rekap Semester 6 bulan × Dalam/Luar (F4 landscape) |
+
+**Konstanta & helper internal `pdf_generator.py`:**
+- `SPD_ROW_COLORS` — dict: kategori (1-5) → warna teks (Direksi=biru, Adm=hijau, Teknik=ungu, Dewas=oranye, default=hitam)
+- `BULAN_ID` — dict bulan Indonesia (1="Januari", dst)
+- Helper laporan: `_draw_kop_lap()`, `_cell()`, `_merged_cell()`, `_rp()`, `_d_short()`
+- Layout: F4=215×330mm, margin 1.5cm, font Helvetica, `1cm = 28.35pt`, Y dari bawah
+
+---
+
+#### `utils/excel_generator.py` (~150 baris)
+
+| Fungsi | Keterangan |
+|---|---|
+| `generate_excel_realisasi(groups, bulan, tahun)` | Export realisasi bulanan ke BytesIO Excel (kolom flat, total row di bawah) |
+
+---
+
+#### `pages/2_visum.py` — Helper functions
+
+| Fungsi | Keterangan |
+|---|---|
+| `generate_nomor_visum(tanggal)` | Nomor visum sequential berdasarkan tanggal |
+| `fmt_tgl_indo(tgl_str)` | "YYYY-MM-DD" → "DD/MM/YYYY" untuk tampilan |
+| `format_jabatan_divisi(peg)` | Format "Man/Spv/Staf - [nama divisi]" untuk PDF |
+| `_strip_div_prefix(nama)` | Strip prefix "Divisi"/"Sub Divisi" dari nama divisi |
+| `get_divisi_label_surat_tugas(peg)` | Label divisi untuk kolom Divisi Surat Tugas |
+| `_struktur_ke_kategori_spd(struktur)` | Map struktur_rkap → nomor kategori (1-5) untuk warna SPD |
+| `_build_pembuka(disposisi)` | Build kalimat pembuka Surat Tugas dari data disposisi |
+| `get_nama_pegawai(peg_id)` | Lookup nama pegawai dari UUID |
+| `cek_bisa_complete(visum_id, tanpa_spd)` | Cek apakah visum boleh di-complete |
+
+---
+
+#### `pages/3_sppd.py` — Helper functions
+
+| Fungsi | Keterangan |
+|---|---|
+| `format_jabatan_sppd_penerima(peg)` | Format jabatan untuk TTD kanan PDF SPPD (Manajer/Supervisor/Staf + divisi) |
+| `format_rupiah(n)` | Angka → "Rp 1.500.000" |
+| `_strip_div_prefix(nama)` | Strip prefix divisi (sama seperti di 2_visum.py) |
+
+---
+
+### Struktur Tab per Halaman
+
+| Halaman | Tab (urutan) |
+|---|---|
+| `pages/2_visum.py` | 1-Daftar Visum, 2-Kelola SPD, 3-Buat Visum Baru, 4-Detail & Edit |
+| `pages/3_sppd.py` | 1-Daftar SPPD, 2-Detail & Realisasi, 3-Rekap SPD |
+| `pages/4_rkap_monitor.py` | 1-Summary, 2-Grafik, 3-Detail per Bulan |
+| `pages/5_pegawai.py` | 1-Daftar Pegawai, 2-Tambah Pegawai, 3-Kelola Jabatan |
+| `pages/6_laporan.py` | 1-Laporan Realisasi, 2-Rekap Bulanan, 3-Rekap Semester |
+
+---
+
+### Pola Kode Umum
+
+**Query Supabase:**
+```python
+db = get_client()
+res = db.table("table_name")\
+    .select("col1, col2, pegawai!sppd_pegawai_id_fkey(nama, jabatan(nama))")\
+    .eq("status", "aktif")\
+    .order("created_at", desc=True)\
+    .execute()
+return res.data
+# PENTING: tabel sppd punya 2 FK ke pegawai (pegawai_id & dibuat_oleh)
+# → wajib pakai pegawai!sppd_pegawai_id_fkey, bukan pegawai saja (ambiguous error)
+```
+
+**Download PDF di Streamlit:**
+```python
+pdf_bytes = generate_xxx(data)  # return BytesIO
+st.download_button("Download PDF", pdf_bytes, "nama_file.pdf", "application/pdf")
+```
+
+**Session state:**
+- `st.session_state.authenticated` — True jika sudah login
+
+---
+
+### Alur Bisnis Utama (untuk orientasi cepat)
+
+**Alur perjalanan dinas normal:**
+1. **Kelola SPD** (Tab 2 Visum) → buat SPD baru → nomor auto dari tanggal
+2. **Buat Visum** (Tab 3 Visum) → pilih SPD, isi tanggal/tujuan/peserta → `auto_buat_semua_sppd()`
+3. **Download PDF** (Tab 4 Visum) → Surat Tugas + SPD + Visum Lembaran I&II
+4. **Pencairan** (Tab 2 SPPD) → pilih pegawai, input hotel/transport → status jadi `pencairan` → RKAP di-deduct
+5. **Realisasi** (Tab 2 SPPD) → input biaya riil (trip detail + biaya lain) → status `realisasi` → `completed`
+6. Cancel kapan saja → rollback RKAP otomatis
+
+**Status SPPD:** `draft` → `pencairan` → `realisasi` → `completed` / `cancelled`
+
+**Visum Tanpa SPD** (biaya bukan dari PTMB): centang "Tanpa SPD" saat buat visum → skip SPD/SPPD, tapi Surat Tugas & Visum PDF tetap bisa di-download.
