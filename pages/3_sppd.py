@@ -699,16 +699,29 @@ with tab3:
     st.subheader("Rekap SPD per Visum")
 
     res_spd = db.table("spd")\
-        .select("*, visum(nomor_visum, tujuan, tanggal_berangkat, tanggal_kembali)")\
+        .select("*")\
         .order("created_at", desc=True)\
         .execute()
     spd_list = res_spd.data
+
+    # Cari tujuan visum per SPD lewat tabel sppd (alur baru: spd.visum_id tidak diisi)
+    res_spd_visum = db.table("sppd")\
+        .select("spd_id, visum(tujuan)")\
+        .not_.is_("spd_id", "null")\
+        .execute()
+    spd_tujuan_map = {}
+    for row in (res_spd_visum.data or []):
+        sid = row.get("spd_id")
+        if sid and sid not in spd_tujuan_map:
+            v = row.get("visum")
+            if v:
+                spd_tujuan_map[sid] = v.get("tujuan", "-")
 
     if not spd_list:
         st.info("Belum ada data SPD.")
     else:
         spd_options = {
-            f"{s['nomor_spd']} — {s['visum']['tujuan'] if s.get('visum') else '-'}": s
+            f"{s['nomor_spd']} — {spd_tujuan_map.get(s['id'], '-')}": s
             for s in spd_list
         }
         selected_spd_key = st.selectbox("Pilih SPD", list(spd_options.keys()), key="rekap_spd_select")
