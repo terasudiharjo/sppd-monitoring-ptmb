@@ -167,7 +167,7 @@ with tab2:
 
         # ── Pilih Pegawai ──
         res = db.table("sppd")\
-            .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan_id, jabatan(nama, struktur_rkap), divisi(id, nama, parent_id)), visum(nomor_visum, tujuan, tanggal_visum, tanggal_berangkat, tanggal_kembali), spd(nomor_spd)")\
+            .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan_id, jabatan(nama, struktur_rkap), divisi(id, nama, parent_id)), visum(nomor_visum, tujuan, tanggal_visum, tanggal_berangkat, tanggal_kembali), spd(nomor_spd, tanggal_spd)")\
             .eq("spd_id", selected_spd["id"])\
             .order("created_at", desc=True)\
             .execute()
@@ -414,7 +414,7 @@ with tab2:
                     pb_data = {
                         "nomor_surat":            spd_data.get("nomor_spd", "-").replace("-O", ""),
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
-                        "tanggal_spd":            _parse_date(visum_data.get("tanggal_visum")) or date.today(),
+                        "tanggal_spd":            _parse_date(spd_data.get("tanggal_spd")) or date.today(),
                         "nama":                   pegawai_data.get("nama", "").title(),
                         "jabatan":                _jab_label,
                         "nomor_surat_tugas":      spd_data.get("nomor_spd", "-").replace("-O", "-F"),
@@ -426,7 +426,7 @@ with tab2:
                         "biaya_transport":        s.get("total_transport", 0),
                         "biaya_lain":             max(0, (s.get("total_biaya") or 0) - (s.get("subtotal_uang_saku") or 0) - (s.get("total_hotel") or 0) - (s.get("total_transport") or 0)),
                         "grand_total":            s.get("total_biaya", 0),
-                        "tanggal_ttd":            _parse_date(visum_data.get("tanggal_visum")) or date.today(),
+                        "tanggal_ttd":            date.today(),
                         "ttd_mengetahui_jabatan": "Direktur Umum",
                         "ttd_mengetahui_nama":    dir_umum_nama,
                         "nama_penerima":          pegawai_data.get("nama", "").title(),
