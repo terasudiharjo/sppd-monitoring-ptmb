@@ -406,6 +406,12 @@ Semua script sudah di-reset ke DRY_RUN=True setelah selesai.
     - `total_hotel` dan `total_transport` tidak diubah (biaya riil aktual)
     - Sudah dieksekusi (`DRY_RUN=False`): 29 SPPD berhasil difix, 0 diskip
     - Catatan: angka uang saku beberapa SPPD tidak berubah karena tarif DK=LK untuk jabatan tersebut, tapi `lokasi_id` dan `rkap_id` sudah benar (RKAP berpindah bucket dari Luar Kaltim ke Dalam Kaltim)
+120. **Tambah IKN ke `KOTA_DALAM_KALTIM` (`utils/database.py`)** — IKN, IKN visum ter-detect sebagai Luar Kaltim. Tambah: `"ikn"`, `"ibu kota nusantara"`, `"nusantara"`.
+121. **Fix PDF SPPD: tanggal dokumen (`pages/3_sppd.py`)** — sebelumnya semua PDF pakai `date.today()`. Perbaikan:
+    - SPPD Pencairan & Realisasi (`tanggal`): pakai `visum.tanggal_visum`
+    - Pernyataan Biaya (`tanggal_spd`): pakai `spd.tanggal_spd` dari DB (tambah ke select query)
+    - Pernyataan Biaya (`tanggal_ttd`): tetap `date.today()` (tanggal tanda tangan = hari ini)
+122. **Fix Surat Tugas PDF: "Tujuan Perjalanan Dinas" (`pages/2_visum.py`)** — sebelumnya ambil dari `visum.keperluan`, sekarang ambil dari `disposisi[0].perihal` (konsisten dengan uraian pembuka). Fallback ke `visum.keperluan` jika disposisi kosong/perihal tidak ada.
 
 ### ⏳ BELUM DIKERJAKAN — lanjut sesi berikutnya:
 
