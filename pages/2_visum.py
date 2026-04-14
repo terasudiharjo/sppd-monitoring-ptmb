@@ -740,7 +740,11 @@ with tab3:
                                     )
                                 )
                             ],
-                            "tujuan":   v.get("keperluan", ""),
+                            "tujuan":   (
+                                v["disposisi"][0].get("perihal", "")
+                                if v.get("disposisi") and v["disposisi"][0].get("perihal")
+                                else v.get("keperluan", "")
+                            ),
                             "durasi":   v["lama_hari"],
                             "waktu":    fmt_waktu_surat_tugas(v['tanggal_berangkat'], v['tanggal_kembali']),
                             "tempat":   v["tujuan"],
