@@ -87,15 +87,15 @@ with tab2:
             nama = st.text_input("Nama Lengkap *")
             email = st.text_input("Email")
         with col2:
-            divisi_options = {d["nama"]: d["id"] for d in divisi_list}
+            divisi_options = {"— Tanpa Divisi —": None, **{d["nama"]: d["id"] for d in divisi_list}}
             jabatan_options = {j["nama"]: j["id"] for j in jabatan_list}
-            
-            selected_divisi = st.selectbox("Divisi *", list(divisi_options.keys()))
+
+            selected_divisi = st.selectbox("Divisi", list(divisi_options.keys()))
             selected_jabatan = st.selectbox("Jabatan *", list(jabatan_options.keys()))
             no_hp = st.text_input("No. HP")
-        
+
         submitted = st.form_submit_button("💾 Simpan", use_container_width=True)
-        
+
         if submitted:
             if not nip or not nama:
                 st.error("NIP dan Nama wajib diisi!")
@@ -137,12 +137,12 @@ with tab3:
                 new_nama = st.text_input("Nama", value=pegawai["nama"])
                 new_email = st.text_input("Email", value=pegawai.get("email") or "")
             with col2:
-                divisi_options = {d["nama"]: d["id"] for d in divisi_list}
+                divisi_options = {"— Tanpa Divisi —": None, **{d["nama"]: d["id"] for d in divisi_list}}
                 jabatan_options = {j["nama"]: j["id"] for j in jabatan_list}
-                
-                current_divisi = pegawai["divisi"]["nama"] if pegawai.get("divisi") else list(divisi_options.keys())[0]
+
+                current_divisi = pegawai["divisi"]["nama"] if pegawai.get("divisi") else "— Tanpa Divisi —"
                 current_jabatan = pegawai["jabatan"]["nama"] if pegawai.get("jabatan") else list(jabatan_options.keys())[0]
-                
+
                 new_divisi = st.selectbox("Divisi", list(divisi_options.keys()),
                     index=list(divisi_options.keys()).index(current_divisi) if current_divisi in divisi_options else 0)
                 new_jabatan = st.selectbox("Jabatan", list(jabatan_options.keys()),

@@ -297,11 +297,26 @@ with tab2:
                     )
 
                     jabatan_id_pgw = (s.get("pegawai") or {}).get("jabatan_id")
+                    plafon = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
+                    max_malam = max((s.get("total_hari") or 1) - 1, 0)
                     hotel_30pct = 0
+
                     if not menginap:
-                        plafon = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
-                        hotel_30pct = int(plafon * 0.30)
-                        st.caption(f"Tidak menginap: 30% × {format_rupiah(plafon)} = **{format_rupiah(hotel_30pct)}**")
+                        # Semua tidak menginap → seluruh malam dapat 30%
+                        hari_tidak_menginap = max_malam
+                        hotel_30pct = int(plafon * 0.30 * hari_tidak_menginap)
+                        st.caption(f"Tidak menginap: {hari_tidak_menginap} malam × {format_rupiah(plafon)} × 30% = **{format_rupiah(hotel_30pct)}**")
+                    else:
+                        # Ada yang menginap — mungkin ada sebagian malam tidak menginap
+                        hari_tidak_menginap = st.number_input(
+                            "Hari tidak menginap hotel (dapat 30%)",
+                            min_value=0, max_value=max_malam,
+                            value=int(s.get("hari_tidak_menginap") or 0),
+                            step=1, key=f"hari_tdk_{s['id']}"
+                        )
+                        hotel_30pct = int(plafon * 0.30 * hari_tidak_menginap)
+                        if hari_tidak_menginap > 0:
+                            st.caption(f"→ {hari_tidak_menginap} malam × {format_rupiah(plafon)} × 30% = **{format_rupiah(hotel_30pct)}**")
 
                     if st.button("🖨️ Print SPPD Pencairan",
                                  use_container_width=True, type="primary",
@@ -329,10 +344,11 @@ with tab2:
                                         db.table("sppd").update({"rkap_id": rkap_id}).eq("id", s["id"]).execute()
                         # Update status + menginap + hotel (kalau tidak menginap)
                         db.table("sppd").update({
-                            "status":      "pencairan",
-                            "menginap":    menginap,
-                            "total_hotel": hotel_30pct,
-                            "total_biaya": total_cair,
+                            "status":               "pencairan",
+                            "menginap":             menginap,
+                            "hari_tidak_menginap":  hari_tidak_menginap,
+                            "total_hotel":          hotel_30pct,
+                            "total_biaya":          total_cair,
                         }).eq("id", s["id"]).execute()
                         if rkap_id:
                             deduct_rkap(rkap_id, total_cair)
@@ -355,13 +371,15 @@ with tab2:
 
                 elif s["status"] in ["pencairan", "realisasi", "completed"]:
                     # Bisa download ulang kapan saja
-                    # Rekonstruksi biaya_penginapan dari DB (total_hotel hanya diisi kalau tidak menginap)
+                    # Rekonstruksi biaya_penginapan dari DB
                     jabatan_id_pgw = (s.get("pegawai") or {}).get("jabatan_id")
-                    if not s.get("menginap", True) and jabatan_id_pgw:
-                        plafon = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"])
-                        biaya_penginapan_cair = int(plafon * 0.30)
+                    plafon_cair = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
+                    hari_tdk_cair = s.get("hari_tidak_menginap") or 0
+                    if not s.get("menginap", True) and hari_tdk_cair == 0:
+                        # Record lama (sebelum fitur partial): pakai total_hotel dari DB
+                        biaya_penginapan_cair = s.get("total_hotel", 0)
                     else:
-                        biaya_penginapan_cair = 0
+                        biaya_penginapan_cair = int(plafon_cair * 0.30 * hari_tdk_cair)
                     pencairan_data = {**base_data, "biaya_penginapan": biaya_penginapan_cair}
                     pdf_bytes = generate_sppd_pencairan(pencairan_data).read()
                     nama_file = f"SPPD_Pencairan_{pegawai_data.get('nama','').replace(' ','_')}.pdf"
@@ -586,12 +604,15 @@ with tab2:
                     # Hotel: cek status menginap dari pencairan
                     menginap_pencairan = s.get("menginap", True)
                     jabatan_id_pgw = (s.get("pegawai") or {}).get("jabatan_id")
+                    plafon_real = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
+                    max_malam_real = max((s.get("total_hari") or 1) - 1, 0)
 
                     if not menginap_pencairan:
-                        # Locked: sudah tidak menginap sejak pencairan, auto 30%
-                        plafon = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
-                        total_hotel = int(plafon * 0.30)
-                        st.caption(f"Tidak menginap (dari pencairan): 30% × {format_rupiah(plafon)} = **{format_rupiah(total_hotel)}**")
+                        # Locked: semua tidak menginap sejak pencairan
+                        hari_tdk_db = s.get("hari_tidak_menginap") or max_malam_real  # fallback record lama
+                        total_hotel = int(plafon_real * 0.30 * hari_tdk_db)
+                        hari_tidak_menginap = hari_tdk_db
+                        st.caption(f"Tidak menginap (dari pencairan): {hari_tdk_db} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(total_hotel)}**")
                     else:
                         # Toggle aktif: user bisa pilih menginap atau tidak
                         menginap_real = st.toggle(
@@ -600,17 +621,32 @@ with tab2:
                             key=f"menginap_real_{s['id']}"
                         )
                         if menginap_real:
-                            total_hotel = st.number_input(
+                            # Hitung pre-fill biaya aktual = total_hotel_DB − kompensasi 30% sebelumnya
+                            hari_tdk_db = s.get("hari_tidak_menginap") or 0
+                            kompensasi_lama = int(plafon_real * 0.30 * hari_tdk_db)
+                            prefill_aktual = max(0, int(s.get("total_hotel") or 0) - kompensasi_lama)
+
+                            biaya_hotel_aktual = st.number_input(
                                 "Biaya Hotel Aktual (Rp)",
-                                value=int(s.get("total_hotel") or 0),
+                                value=prefill_aktual,
                                 step=50000,
                                 key=f"hotel_{s['id']}"
                             )
-                            st.caption(f"→ {format_rupiah(total_hotel)}")
+                            hari_tidak_menginap = st.number_input(
+                                "Hari tidak menginap hotel (dapat 30%)",
+                                min_value=0, max_value=max_malam_real,
+                                value=hari_tdk_db, step=1,
+                                key=f"hari_tdk_real_{s['id']}"
+                            )
+                            kompensasi_30pct = int(plafon_real * 0.30 * hari_tidak_menginap)
+                            if hari_tidak_menginap > 0:
+                                st.caption(f"→ {hari_tidak_menginap} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(kompensasi_30pct)}**")
+                            total_hotel = biaya_hotel_aktual + kompensasi_30pct
+                            st.caption(f"Total Hotel: **{format_rupiah(total_hotel)}**")
                         else:
-                            plafon = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
-                            total_hotel = int(plafon * 0.30)
-                            st.caption(f"Tidak menginap: 30% × {format_rupiah(plafon)} = **{format_rupiah(total_hotel)}**")
+                            hari_tidak_menginap = max_malam_real
+                            total_hotel = int(plafon_real * 0.30 * hari_tidak_menginap)
+                            st.caption(f"Tidak menginap: {hari_tidak_menginap} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(total_hotel)}**")
 
                     # ── Biaya Lain-lain ──
                     st.markdown("**Biaya Lain-lain**")
@@ -667,9 +703,10 @@ with tab2:
                         total_realisasi_final = (s.get("subtotal_uang_saku") or 0) + total_transport + total_hotel + total_lain_valid
 
                         db.table("sppd").update({
-                            "total_transport": total_transport,
-                            "total_hotel":     total_hotel,
-                            "total_biaya":     total_realisasi_final,
+                            "total_transport":      total_transport,
+                            "total_hotel":          total_hotel,
+                            "hari_tidak_menginap":  hari_tidak_menginap,
+                            "total_biaya":          total_realisasi_final,
                         }).eq("id", s["id"]).execute()
 
                         # Selisih RKAP: bandingkan variable cost lama vs baru
