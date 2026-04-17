@@ -141,8 +141,9 @@ def get_sppd_stats():
 KOTA_DALAM_KALTIM = {
     "samarinda", "balikpapan", "bontang", "kutai kartanegara",
     "berau", "paser", "penajam paser utara", "mahakam ulu",
+    "kutai timur", "kutai barat",
     "tenggarong", "sangatta", "tanjung redeb", "tanah grogot",
-    "penajam", "long bagun",
+    "penajam", "long bagun", "sendawar", "ujoh bilang",
     "ikn", "ibu kota nusantara", "nusantara",
 }
 
