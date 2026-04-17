@@ -30,6 +30,9 @@ KODE_VISUM  = "J"
 KOTA_OPTIONS = [
     "Samarinda", "Balikpapan", "Bontang", "Kutai Kartanegara",
     "Berau", "Paser", "Penajam Paser Utara", "Mahakam Ulu", "IKN",
+    "Kutai Timur", "Kutai Barat",
+    "Tenggarong", "Sangatta", "Tanjung Redeb", "Tanah Grogot",
+    "Penajam", "Sendawar", "Ujoh Bilang",
     "Banjarmasin", "Palangka Raya", "Pontianak",
     "Jakarta", "Surabaya", "Bandung", "Yogyakarta", "Semarang", "Bogor",
     "Makassar", "Manado", "Palu", "Batam",
