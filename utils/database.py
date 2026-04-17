@@ -477,7 +477,7 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
         return {"success": False, "pesan": str(e), "sppd_id": None}
 
 
-def recalculate_sppd(sppd_id: str) -> dict:
+def recalculate_sppd(sppd_id: str) -> dict:  # noqa
     """
     Hitung ulang komponen uang saku berdasarkan jabatan + rule terkini.
     - draft     : update biaya saja
