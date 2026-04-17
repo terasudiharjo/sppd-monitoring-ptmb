@@ -33,8 +33,9 @@ Aplikasi Monitoring SPPD/
 ├── data/                     # CSV data rule SPPD & RKAP
 ├── setup/                    # Script import data awal (semua DRY_RUN=True)
 └── check/
-    ├── cek_tabel.py          # Lihat semua tabel Supabase
-    └── cek_sppd_anomali.py   # Cek SPPD nilai 0; FIX_TOTAL_HARI=True untuk auto-fix
+    ├── cek_tabel.py              # Lihat semua tabel Supabase
+    ├── cek_sppd_anomali.py       # Cek SPPD nilai 0; FIX_TOTAL_HARI=True untuk auto-fix
+    └── fix_sppd_realisasi.py     # Fix manual uang saku SPPD realisasi/completed yang salah tarif
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -224,6 +225,7 @@ cd check && python cek_tabel.py
 ## Histori Perubahan
 Detail perubahan per sesi ada di `CHANGELOG.md` di root folder.
 Baca CHANGELOG.md hanya jika perlu trace keputusan desain lama.
+Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 
 ## Referensi Cepat untuk Claude
 
@@ -260,6 +262,7 @@ Baca CHANGELOG.md hanya jika perlu trace keputusan desain lama.
 | `cancel_semua_sppd_visum(visum_id)` | Cancel semua SPPD + rollback RKAP |
 | `update_rekap_spd(spd_id)` | Hitung ulang total per kategori di `spd` |
 | `get_all_sppd()` | Semua SPPD (join visum + pegawai) |
+| `recalculate_sppd(sppd_id)` | Hitung ulang uang saku dari rule terkini (draft/pencairan saja) |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
 | `save_transport_detail(sppd_id, items, tgl_b, tgl_k)` | Simpan rincian leg perjalanan (replace) |
@@ -270,7 +273,7 @@ Baca CHANGELOG.md hanya jika perlu trace keputusan desain lama.
 **Konstanta penting:**
 - `JABATAN_RULE_MAP` — nama jabatan DB → nama rule tarif SPPD
 - `JABATAN_SORT_ORDER` — nama jabatan → angka urutan sorting
-- `KOTA_DALAM_KALTIM` — set nama kota dalam Kaltim
+- `KOTA_DALAM_KALTIM` — set nama kota dalam Kaltim (termasuk Kutai Timur, Kutai Barat, Sendawar, Ujoh Bilang per sesi 2026-04-17)
 - `LOKASI_DALAM` / `LOKASI_LUAR` / `LOKASI_LN` — UUID 3 lokasi (hardcoded)
 - `KODE_STATIC = "1421002"`, `KODE_SEKPER = "10a-I"`, `KODE_VISUM = "J"`, `KODE_SPD = "O"`
 

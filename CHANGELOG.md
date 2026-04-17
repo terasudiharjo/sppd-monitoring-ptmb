@@ -257,4 +257,26 @@ Semua script di-reset ke DRY_RUN=True setelah selesai.
 
 ---
 
+## Sesi 2026-04-17
+
+**Fix: Kota/Kabupaten Kaltim di Dropdown & Deteksi Lokasi:**
+118. `utils/database.py`: tambah `"kutai timur"`, `"kutai barat"`, `"sendawar"`, `"ujoh bilang"` ke `KOTA_DALAM_KALTIM` — sebelumnya Kutai Barat & Kutai Timur tidak ter-detect sebagai Dalam Kaltim
+119. `pages/2_visum.py`: tambah kota-kota di atas plus `"Tenggarong"`, `"Sangatta"`, `"Tanjung Redeb"`, `"Tanah Grogot"`, `"Penajam"` ke `KOTA_OPTIONS` dropdown form buat visum
+
+**Fitur: Tombol "Hitung Ulang" Uang Saku SPPD:**
+120. `utils/database.py`: tambah fungsi `recalculate_sppd(sppd_id)` — hitung ulang komponen uang saku dari jabatan + rule_sppd terkini
+    - `draft`: update nilai saja
+    - `pencairan`: update nilai + adjust RKAP (rollback lama → deduct baru)
+    - Status lain: ditolak
+121. `pages/3_sppd.py`: tombol **"🔄 Hitung Ulang"** di col_pdf1 untuk SPPD status `draft`
+122. `pages/3_sppd.py`: tombol **"🔄 Hitung Ulang Uang Saku"** untuk SPPD status `pencairan`
+123. `check/fix_sppd_realisasi.py` (NEW): script admin untuk koreksi manual SPPD `realisasi`/`completed` — preview `DRY_RUN=True`, eksekusi `DRY_RUN=False`
+
+**Keputusan desain:**
+- Perubahan jabatan pegawai TIDAK otomatis mengubah SPPD lama (past trips tetap pakai tarif saat dibuat)
+- Recalculate hanya via tombol manual, bukan otomatis saat jabatan berubah
+- `total_hotel`/`total_transport`/`biaya_lain` tidak ikut di-recalculate
+
+---
+
 *File ini adalah arsip histori perubahan. Untuk dokumentasi operasional aktif, lihat CLAUDE.md.*
