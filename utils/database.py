@@ -477,6 +477,85 @@ def buat_sppd_untuk_pegawai(pegawai_id: str, visum: dict, spd: dict, lokasi_id: 
         return {"success": False, "pesan": str(e), "sppd_id": None}
 
 
+def recalculate_sppd(sppd_id: str) -> dict:
+    """
+    Hitung ulang komponen uang saku berdasarkan jabatan + rule terkini.
+    - draft     : update biaya saja
+    - pencairan : update biaya + adjust RKAP (rollback lama → deduct baru)
+    - lainnya   : ditolak
+    Return: {"success": bool, "pesan": str, "selisih": int}
+    """
+    db = get_client()
+
+    res = db.table("sppd")\
+        .select("id, status, pegawai_id, lokasi_id, total_hari,"
+                " subtotal_uang_saku, total_hotel, spd_id, rkap_id")\
+        .eq("id", sppd_id).single().execute()
+    if not res.data:
+        return {"success": False, "pesan": "SPPD tidak ditemukan", "selisih": 0}
+
+    sppd = res.data
+    if sppd["status"] not in ("draft", "pencairan"):
+        return {"success": False,
+                "pesan": f"SPPD status {sppd['status'].upper()} tidak dapat dihitung ulang",
+                "selisih": 0}
+
+    pegawai = get_pegawai_by_id(sppd["pegawai_id"])
+    if not pegawai:
+        return {"success": False, "pesan": "Pegawai tidak ditemukan", "selisih": 0}
+
+    jabatan_id = pegawai.get("jabatan_id")
+    lokasi_id  = sppd["lokasi_id"]
+    total_hari = sppd["total_hari"] or 1
+
+    rule = None
+    if jabatan_id and lokasi_id:
+        try:
+            rule = get_rule_sppd(jabatan_id, lokasi_id)
+        except Exception:
+            rule = None
+
+    if rule:
+        calc = hitung_uang_saku(rule, total_hari)
+    else:
+        calc = {"uang_harian": 0, "uang_makan": 0,
+                "transport_lokal": 0, "uang_rep": 0, "subtotal": 0}
+
+    subtotal_baru = calc["subtotal"]
+    subtotal_lama = sppd.get("subtotal_uang_saku") or 0
+    selisih = subtotal_baru - subtotal_lama
+
+    # total_biaya: draft = subtotal saja; pencairan = subtotal + hotel yang sudah ada
+    total_hotel_existing = sppd.get("total_hotel") or 0
+    total_biaya_baru = subtotal_baru + total_hotel_existing
+
+    # Adjust RKAP untuk pencairan (hanya jika ada selisih)
+    rkap_id = sppd.get("rkap_id")
+    if sppd["status"] == "pencairan" and rkap_id and selisih != 0:
+        rollback_rkap(rkap_id, subtotal_lama)
+        deduct_rkap(rkap_id, subtotal_baru)
+
+    try:
+        db.table("sppd").update({
+            "uang_harian_total":       calc["uang_harian"],
+            "uang_makan_total":        calc["uang_makan"],
+            "transport_lokal_total":   calc["transport_lokal"],
+            "uang_representasi_total": calc["uang_rep"],
+            "subtotal_uang_saku":      subtotal_baru,
+            "total_biaya":             total_biaya_baru,
+        }).eq("id", sppd_id).execute()
+    except Exception as e:
+        return {"success": False, "pesan": str(e), "selisih": 0}
+
+    if sppd.get("spd_id"):
+        update_rekap_spd(sppd["spd_id"])
+
+    pesan = (f"Berhasil dihitung ulang "
+             f"({'rule ditemukan' if rule else 'rule tidak ditemukan, biaya 0'}). "
+             f"Selisih: Rp {selisih:,}".replace(",", "."))
+    return {"success": True, "pesan": pesan, "selisih": selisih}
+
+
 def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:
     """
     Buat SPPD otomatis untuk semua peserta visum.

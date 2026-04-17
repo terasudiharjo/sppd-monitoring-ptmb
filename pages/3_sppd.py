@@ -7,6 +7,7 @@ from utils.database import (
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
+    recalculate_sppd,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -289,6 +290,15 @@ with tab2:
                 if s["status"] == "draft":
                     st.info("Klik Print untuk generate SPPD & ubah status → **PENCAIRAN**")
 
+                    if st.button("🔄 Hitung Ulang", key=f"btn_recalc_{s['id']}",
+                                 help="Hitung ulang uang saku berdasarkan tarif rule_sppd terkini"):
+                        hasil = recalculate_sppd(s["id"])
+                        if hasil["success"]:
+                            st.success(f"✅ {hasil['pesan']}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {hasil['pesan']}")
+
                     # Toggle menginap — disimpan ke kolom sppd.menginap
                     menginap = st.toggle(
                         "Menginap Hotel",
@@ -391,6 +401,15 @@ with tab2:
                         use_container_width=True,
                         key=f"dl_pencairan_{s['id']}"
                     )
+                    if s["status"] == "pencairan":
+                        if st.button("🔄 Hitung Ulang Uang Saku", key=f"btn_recalc_{s['id']}",
+                                     help="Hitung ulang uang saku + adjust RKAP. Total hotel tidak berubah."):
+                            hasil = recalculate_sppd(s["id"])
+                            if hasil["success"]:
+                                st.success(f"✅ {hasil['pesan']}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {hasil['pesan']}")
 
             # ── Tombol SPPD Realisasi (hanya kalau udah realisasi/completed) ──
             with col_pdf2:
