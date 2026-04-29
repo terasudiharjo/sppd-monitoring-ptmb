@@ -136,6 +136,11 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 4. ~~**Manual**: tambah NURWAHYU ISLAMIATI~~ ✅ Sudah dikerjakan
 5. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
 
+### ✅ Selesai sesi 2026-04-29:
+- Rename jabatan `CALON PEGAWAI` → `STAF PKWT` (di Supabase + mapping kode)
+- Fix tanggal Visum Lembaran II kolom kiri ("Tiba pada tanggal" pakai tgl berangkat)
+- Edit NIP pegawai saat naik jabatan dari PKWT di halaman Edit Pegawai
+
 ---
 
 ## Keputusan Desain yang Sudah Disepakati
@@ -271,7 +276,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `get_rekap_perjalanan(bulan_list)` | Count perjalanan per jabatan per lokasi |
 
 **Konstanta penting:**
-- `JABATAN_RULE_MAP` — nama jabatan DB → nama rule tarif SPPD
+- `JABATAN_RULE_MAP` — nama jabatan DB → nama rule tarif SPPD (termasuk `"STAF PKWT"` → `"STAF PELAKSANA"` sejak sesi 2026-04-29)
 - `JABATAN_SORT_ORDER` — nama jabatan → angka urutan sorting
 - `KOTA_DALAM_KALTIM` — set nama kota dalam Kaltim (termasuk Kutai Timur, Kutai Barat, Sendawar, Ujoh Bilang per sesi 2026-04-17)
 - `LOKASI_DALAM` / `LOKASI_LUAR` / `LOKASI_LN` — UUID 3 lokasi (hardcoded)

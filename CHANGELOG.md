@@ -4,6 +4,21 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-04-29
+
+**Jabatan & RKAP (`utils/database.py`):**
+1. Tambah `"STAF PKWT": "STAF PELAKSANA"` di `JABATAN_RULE_MAP` — untuk mendukung rename jabatan "Calon Pegawai" → "Staf PKWT" di tabel `jabatan` Supabase. Tarif SPPD & RKAP deduct tetap jalan. Entry `"CALON PEGAWAI"` dipertahankan sebagai fallback data lama.
+2. Tambah `"STAF PKWT": 8` di `JABATAN_SORT_ORDER`.
+3. Rename dilakukan manual di Supabase: kolom `nama` diubah, kolom `struktur_rkap = "BANTUAN"` tidak diubah → RKAP deduct ke kategori Bantuan tetap.
+
+**PDF Visum (`utils/pdf_generator.py`):**
+4. Fix bug Visum Lembaran II kolom kiri: "Tiba pada tanggal" sebelumnya pakai `tgl_kembali`, diperbaiki jadi `tgl_berangkat`.
+
+**Edit Pegawai (`pages/5_pegawai.py`):**
+5. Tambah field "NIP Baru" di form edit pegawai — hanya muncul kalau jabatan asal pegawai adalah `STAF PKWT` atau `CALON PEGAWAI`. NIP hanya disimpan ke DB kalau jabatan baru yang dipilih bukan PKWT (naik jabatan).
+
+---
+
 ## Sesi 2026-03-30
 
 **PDF:**
