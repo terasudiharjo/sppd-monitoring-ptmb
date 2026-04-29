@@ -151,13 +151,10 @@ with tab3:
                     index=list(jabatan_options.keys()).index(current_jabatan) if current_jabatan in jabatan_options else 0)
                 new_hp = st.text_input("No. HP", value=pegawai.get("no_hp") or "")
 
-            # NIP hanya bisa diedit kalau naik dari PKWT/Calon Pegawai ke jabatan lain
-            naik_dari_pkwt = (
-                current_jabatan.upper() in JABATAN_PKWT and
-                new_jabatan.upper() not in JABATAN_PKWT
-            )
-            if naik_dari_pkwt:
-                st.info("🔄 Pegawai naik jabatan dari PKWT — NIP dapat diubah.")
+            # NIP bisa diedit kalau jabatan asal PKWT/Calon Pegawai (langsung muncul, tidak perlu submit dulu)
+            adalah_pkwt = current_jabatan.upper() in JABATAN_PKWT
+            if adalah_pkwt:
+                st.info("ℹ️ Pegawai PKWT — NIP dapat diubah jika naik jabatan.")
                 new_nip = st.text_input("NIP Baru", value=pegawai.get("nip") or "")
             else:
                 new_nip = None
@@ -177,7 +174,8 @@ with tab3:
                         "divisi_id": divisi_options[new_divisi],
                         "jabatan_id": jabatan_options[new_jabatan],
                     }
-                    if naik_dari_pkwt and new_nip and new_nip.strip():
+                    # Simpan NIP baru hanya kalau diisi dan jabatan baru bukan PKWT lagi
+                    if adalah_pkwt and new_nip and new_nip.strip() and new_jabatan.upper() not in JABATAN_PKWT:
                         update_data["nip"] = new_nip.strip()
                     db.table("pegawai").update(update_data).eq("id", pegawai["id"]).execute()
                     st.success("✅ Data pegawai berhasil diupdate!")
