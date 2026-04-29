@@ -1153,7 +1153,7 @@ def _visum_lembaran2(c, data):
         c.line(mid, y, mid, y - bh)
 
         if roman == "II":
-            tiba_kota  = tujuan; tiba_tgl = tgl_k
+            tiba_kota  = tujuan; tiba_tgl = tgl_b
             brgk_kota  = tujuan; brgk_ke  = brgkt; brgk_tgl = tgl_k
         else:
             tiba_kota  = "….................................."; tiba_tgl  = "….................................."
