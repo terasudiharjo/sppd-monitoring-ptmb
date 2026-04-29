@@ -131,6 +131,8 @@ with tab3:
         divisi_list = get_all_divisi()
         jabatan_list = get_all_jabatan()
         
+        JABATAN_PKWT = {"CALON PEGAWAI", "STAF PKWT"}
+
         with st.form("form_edit_pegawai"):
             col1, col2 = st.columns(2)
             with col1:
@@ -148,22 +150,36 @@ with tab3:
                 new_jabatan = st.selectbox("Jabatan", list(jabatan_options.keys()),
                     index=list(jabatan_options.keys()).index(current_jabatan) if current_jabatan in jabatan_options else 0)
                 new_hp = st.text_input("No. HP", value=pegawai.get("no_hp") or "")
-            
+
+            # NIP hanya bisa diedit kalau naik dari PKWT/Calon Pegawai ke jabatan lain
+            naik_dari_pkwt = (
+                current_jabatan.upper() in JABATAN_PKWT and
+                new_jabatan.upper() not in JABATAN_PKWT
+            )
+            if naik_dari_pkwt:
+                st.info("🔄 Pegawai naik jabatan dari PKWT — NIP dapat diubah.")
+                new_nip = st.text_input("NIP Baru", value=pegawai.get("nip") or "")
+            else:
+                new_nip = None
+
             col_save, col_deactivate = st.columns(2)
             with col_save:
                 save = st.form_submit_button("💾 Update", use_container_width=True)
             with col_deactivate:
                 deactivate = st.form_submit_button("🚫 Nonaktifkan", use_container_width=True, type="secondary")
-            
+
             if save:
                 try:
-                    db.table("pegawai").update({
+                    update_data = {
                         "nama": new_nama,
                         "email": new_email,
                         "no_hp": new_hp,
                         "divisi_id": divisi_options[new_divisi],
                         "jabatan_id": jabatan_options[new_jabatan],
-                    }).eq("id", pegawai["id"]).execute()
+                    }
+                    if naik_dari_pkwt and new_nip and new_nip.strip():
+                        update_data["nip"] = new_nip.strip()
+                    db.table("pegawai").update(update_data).eq("id", pegawai["id"]).execute()
                     st.success("✅ Data pegawai berhasil diupdate!")
                     st.rerun()
                 except Exception as e:
