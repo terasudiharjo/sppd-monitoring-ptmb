@@ -149,9 +149,9 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 - **Tambah detail SPPD per bulan di RKAP Monitor Tab 3**: selectbox pilih bulan → tampil tabel siapa yang berangkat, kemana, pakai anggaran berapa (query by `rkap_id`)
 - **Fix script `cek_rkap_vs_sppd.py`**: exclude SPPD status DRAFT dari perbandingan (DRAFT belum deduct RKAP, sebelumnya dihitung sebagai error)
 - **Script diagnostik baru**: `check/investigasi_bantuan_maret.py` — investigasi targeted selisih RKAP vs SPPD
-- **Script fix data**: `check/fix_indrastiti_total_biaya.py` — koreksi `total_biaya` INDRASTITI yang kehilangan transport setelah koreksi tarif tarif staf → spv
+- **Script fix data**: `check/fix_indrastiti_total_biaya.py` — koreksi `total_biaya` INDRASTITI yang kehilangan transport setelah koreksi tarif staf → spv; **✅ sudah dijalankan** — `total_biaya` Rp 6.400.000 → Rp 9.377.000, data DB sudah benar
 - **Script diagnostik baru**: `check/cek_sppd_bulan_rkap.py` — deteksi SPPD yang `rkap_id`-nya mengarah ke bulan RKAP berbeda dari bulan berangkat visum (jalankan dengan `PYTHONIOENCODING=utf-8`)
-- **Script fix data**: `check/fix_visum0028_rkap_bulan.py` — pindah deduct Visum 0028 Bali (FALIQ + Supriadi) dari RKAP April ke RKAP Maret yang benar; total Rp 21.569.800 dipindah; terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`
+- **Script fix data**: `check/fix_visum0028_rkap_bulan.py` — pindah deduct Visum 0028 Bali (FALIQ + Supriadi) dari RKAP April ke RKAP Maret yang benar; total Rp 21.569.800 dipindah; **✅ sudah dijalankan** — terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`
 
 ### ✅ Selesai sesi 2026-04-29:
 - Rename jabatan `CALON PEGAWAI` → `STAF PKWT` (di Supabase + mapping kode)

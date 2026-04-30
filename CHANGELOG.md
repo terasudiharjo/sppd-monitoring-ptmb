@@ -19,7 +19,9 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 6. Sama seperti no. 5 — `total_biaya_baru` sebelumnya hanya `subtotal_baru + total_hotel`, mengabaikan `total_transport` dan `sppd_biaya_lain`. Root cause: saat INDRASTITI dikoreksi dari tarif staf → spv, transport Rp 2.977.000 hilang dari `total_biaya` tapi sudah terdeduct di RKAP.
 
 **Script Fix Data:**
-7. Dibuat `check/fix_indrastiti_total_biaya.py` — koreksi one-time `total_biaya` INDRASTITI: dari Rp 6.400.000 → Rp 9.377.000 (tambah transport Rp 2.977.000). RKAP tidak perlu diubah (sudah benar).
+7. Dibuat `check/fix_indrastiti_total_biaya.py` — koreksi one-time `total_biaya` INDRASTITI: dari Rp 6.400.000 → Rp 9.377.000 (tambah transport Rp 2.977.000). RKAP tidak perlu diubah (sudah benar). **✅ Script sudah dijalankan, data DB sudah benar.**
+8. Dibuat `check/cek_sppd_bulan_rkap.py` — deteksi SPPD yang `rkap_id`-nya mengarah ke bulan RKAP berbeda dari bulan berangkat visum. Temuan: 2 SPPD Visum 0028 (FALIQ + Supriadi, perjalanan Bali 26-29 Maret) terdeduct ke RKAP April.
+9. Dibuat `check/fix_visum0028_rkap_bulan.py` — realokasi deduct Visum 0028 dari RKAP April ke RKAP Maret (Luar Kaltim); total Rp 21.569.800 dipindah. **✅ Script sudah dijalankan, terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`.**
 
 **RKAP Monitor (`pages/4_rkap_monitor.py`):**
 8. Tab "Detail per Bulan": tambah section detail SPPD di bawah tabel bulanan. Selectbox pilih bulan → query SPPD by `rkap_id` → tabel: Nama | Jabatan | Visum | Tujuan | Tgl Berangkat | Tgl Kembali | Status | Uang Saku | Hotel | Total. Default ke bulan pertama yang ada pemakaian.
