@@ -400,6 +400,65 @@ def main():
                 })
             st.dataframe(pd.DataFrame(tbl_rows), use_container_width=True, hide_index=True)
 
+            # ── Detail SPPD per bulan yang dipilih ──────────────
+            st.markdown("---")
+            st.markdown("**Detail penggunaan: siapa saja yang berangkat di bulan ini**")
+
+            bulan_ada = df_detail["bulan_label"].tolist()
+            # Default ke bulan pertama yang ada terpakai > 0, kalau tidak ada, bulan pertama saja
+            bulan_dengan_terpakai = df_detail[df_detail["anggaran_terpakai"] > 0]["bulan_label"].tolist()
+            default_idx = bulan_ada.index(bulan_dengan_terpakai[0]) if bulan_dengan_terpakai else 0
+
+            bulan_detail_pilih = st.selectbox(
+                "Pilih bulan:",
+                options=bulan_ada,
+                index=default_idx,
+                key=f"detail_bulan_{kat_pilih}_{lok_pilih}",
+            )
+
+            row_bulan = df_detail[df_detail["bulan_label"] == bulan_detail_pilih]
+            if not row_bulan.empty:
+                rkap_id_pilih = row_bulan.iloc[0]["id"]
+
+                supabase = get_client()
+                res_s = supabase.table("sppd")\
+                    .select(
+                        "status, subtotal_uang_saku, total_hotel, total_transport, total_biaya,"
+                        " pegawai!sppd_pegawai_id_fkey(nama, jabatan(nama)),"
+                        " visum(nomor_visum, tujuan, tanggal_berangkat, tanggal_kembali)"
+                    )\
+                    .eq("rkap_id", rkap_id_pilih)\
+                    .neq("status", "cancelled")\
+                    .execute()
+
+                sppd_rows = res_s.data or []
+                if sppd_rows:
+                    det_rows = []
+                    for s in sppd_rows:
+                        peg   = s.get("pegawai") or {}
+                        visum = s.get("visum") or {}
+                        det_rows.append({
+                            "Nama":          peg.get("nama", "-"),
+                            "Jabatan":       (peg.get("jabatan") or {}).get("nama", "-"),
+                            "Visum":         visum.get("nomor_visum", "-"),
+                            "Tujuan":        visum.get("tujuan", "-"),
+                            "Tgl Berangkat": (visum.get("tanggal_berangkat") or "")[:10],
+                            "Tgl Kembali":   (visum.get("tanggal_kembali") or "")[:10],
+                            "Status":        s.get("status", "-").upper(),
+                            "Uang Saku":     format_rp(s.get("subtotal_uang_saku") or 0),
+                            "Hotel":         format_rp(s.get("total_hotel") or 0),
+                            "Total":         format_rp(s.get("total_biaya") or 0),
+                        })
+                    st.dataframe(pd.DataFrame(det_rows), use_container_width=True, hide_index=True)
+                    grand = sum(s.get("total_biaya") or 0 for s in sppd_rows)
+                    st.caption(
+                        f"**{len(sppd_rows)} SPPD aktif** di {bulan_detail_pilih} "
+                        f"({kat_pilih} – {lok_pilih}) | "
+                        f"Grand Total: **{format_rp(grand)}**"
+                    )
+                else:
+                    st.info(f"Tidak ada SPPD aktif yang deduct ke RKAP {bulan_detail_pilih}.")
+
 
 # ─────────────────────────────────────────────
 if __name__ == "__main__":

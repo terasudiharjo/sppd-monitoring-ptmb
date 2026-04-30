@@ -37,3 +37,24 @@ desktop.ini
 
 # Logs
 *.log
+
+# Claude Code internal state
+.claude/
+
+# Backup files
+CLAUDE_backup*.md
+
+# Output/report markdown dari check scripts
+check/*.md
+
+# Raw data import (file sensitif pegawai, bukan data master app)
+data/DUK_2026*.csv
+data/DUK_2026*.xls
+data/DUK_2026*.xlsx
+data/Data_Karyawan.csv
+data/PEG*.xlsx
+data/reporting/
+data/rkap_monitor_bulanan/
+
+# Database schema reference (generated, bisa sensitif)
+schema_reference.sql

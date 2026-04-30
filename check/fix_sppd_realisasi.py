@@ -30,8 +30,8 @@ from utils.database import (
 )
 
 # ── KONFIGURASI ──────────────────────────────────────────
-SPPD_ID = "ISI-UUID-SPPD-DI-SINI"   # Ganti dengan UUID SPPD yang akan di-fix
-DRY_RUN = True                         # Set False untuk benar-benar update DB
+SPPD_ID = "isi dengan UUID SPPD yang akan di-fix"   # Ganti dengan UUID SPPD yang akan di-fix
+DRY_RUN = True                        # Set False untuk benar-benar update DB
 # ─────────────────────────────────────────────────────────
 
 
@@ -110,8 +110,9 @@ def fix_sppd(sppd_id: str, dry_run: bool = True):
     subtotal_baru = calc["subtotal"]
     subtotal_lama = sppd.get("subtotal_uang_saku") or 0
     selisih = subtotal_baru - subtotal_lama
-    total_hotel_existing = sppd.get("total_hotel") or 0
-    total_biaya_baru = subtotal_baru + total_hotel_existing
+    # Pertahankan var costs (hotel + transport + biaya lain); hanya uang saku yang berubah
+    var_costs = (sppd.get("total_biaya") or 0) - (sppd.get("subtotal_uang_saku") or 0)
+    total_biaya_baru = subtotal_baru + max(var_costs, 0)
 
     print(f"\n[NILAI BARU]")
     print(f"  Uang Harian    : {fmt_rp(calc['uang_harian'])}")
@@ -119,7 +120,7 @@ def fix_sppd(sppd_id: str, dry_run: bool = True):
     print(f"  Transport Lokal: {fmt_rp(calc['transport_lokal'])}")
     print(f"  Uang Representasi: {fmt_rp(calc['uang_rep'])}")
     print(f"  Subtotal Uang Saku: {fmt_rp(subtotal_baru)}")
-    print(f"  Total Hotel (tidak berubah): {fmt_rp(total_hotel_existing)}")
+    print(f"  Var Costs (hotel+transport+lain, tidak berubah): {fmt_rp(max(var_costs, 0))}")
     print(f"  Total Biaya Baru: {fmt_rp(total_biaya_baru)}")
     print(f"\n  Selisih uang saku: {fmt_rp(selisih)}")
 

@@ -26,7 +26,7 @@ from utils.database import hitung_uang_saku, get_rule_sppd, rollback_rkap, deduc
 
 load_dotenv()
 
-DRY_RUN = False   # Ganti False untuk eksekusi sungguhan
+DRY_RUN = True   # Ganti False untuk eksekusi sungguhan
 
 # ── Konstanta lokasi ──
 LOKASI_LUAR  = "99c9f92f-972f-46d5-99d4-219b758d2cb7"  # Luar Kaltim

@@ -276,7 +276,7 @@ def rollback_rkap(rkap_id: str, jumlah: int):
     res = db.table("rkap").select("anggaran_terpakai, anggaran_sisa").eq("id", rkap_id).single().execute()
     if not res.data:
         return False
-    terpakai_baru = max(res.data["anggaran_terpakai"] - jumlah, 0)
+    terpakai_baru = res.data["anggaran_terpakai"] - jumlah
     sisa_baru     = res.data["anggaran_sisa"] + jumlah
     db.table("rkap").update({
         "anggaran_terpakai": terpakai_baru,
@@ -491,7 +491,7 @@ def recalculate_sppd(sppd_id: str) -> dict:  # noqa
 
     res = db.table("sppd")\
         .select("id, status, pegawai_id, lokasi_id, total_hari,"
-                " subtotal_uang_saku, total_hotel, spd_id, rkap_id")\
+                " subtotal_uang_saku, total_hotel, total_biaya, spd_id, rkap_id")\
         .eq("id", sppd_id).single().execute()
     if not res.data:
         return {"success": False, "pesan": "SPPD tidak ditemukan", "selisih": 0}
@@ -527,9 +527,9 @@ def recalculate_sppd(sppd_id: str) -> dict:  # noqa
     subtotal_lama = sppd.get("subtotal_uang_saku") or 0
     selisih = subtotal_baru - subtotal_lama
 
-    # total_biaya: draft = subtotal saja; pencairan = subtotal + hotel yang sudah ada
-    total_hotel_existing = sppd.get("total_hotel") or 0
-    total_biaya_baru = subtotal_baru + total_hotel_existing
+    # Pertahankan var costs (hotel + transport + biaya lain); hanya uang saku yang berubah
+    var_costs = (sppd.get("total_biaya") or 0) - (sppd.get("subtotal_uang_saku") or 0)
+    total_biaya_baru = subtotal_baru + max(var_costs, 0)
 
     # Adjust RKAP untuk pencairan (hanya jika ada selisih)
     rkap_id = sppd.get("rkap_id")

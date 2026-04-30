@@ -4,6 +4,33 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-04-30
+
+**Investigasi & Diagnostik RKAP:**
+1. Dibuat `check/cek_rkap_vs_sppd.py` — script diagnostik perbandingan `rkap.anggaran_terpakai` vs sum `sppd.total_biaya` aktif per kategori/lokasi/bulan. Hasilkan laporan selisih, SPPD aktif & cancelled per baris RKAP.
+2. Fix script: SPPD status DRAFT tidak dihitung dalam perbandingan (DRAFT belum deduct RKAP). Label aktif kini split: "X sudah deduct, Y masih draft".
+3. Dibuat `check/investigasi_bantuan_maret.py` — investigasi targeted bantuan_sppd Maret 2026. Temuan: selisih Rp 2.977.000 bukan dari SPPD cancelled, tapi dari `total_biaya` INDRASTITI yang kehilangan komponen transport akibat bug `fix_sppd_realisasi.py`.
+
+**Bug Fix (`utils/database.py`):**
+4. `rollback_rkap`: hapus `max(terpakai - jumlah, 0)` — clamp ini menyebabkan inkonsistensi `terpakai + sisa ≠ anggaran_awal` jika rollback > terpakai (edge case). Sekarang rollback selalu konsisten.
+5. `recalculate_sppd`: tambah `total_biaya` ke select query; ubah kalkulasi `total_biaya_baru` dari `subtotal_baru + total_hotel_existing` → `subtotal_baru + var_costs` di mana `var_costs = total_biaya_lama - uang_saku_lama`. Ini mempertahankan hotel + transport + biaya lain saat uang saku direcalculate.
+
+**Bug Fix (`check/fix_sppd_realisasi.py`):**
+6. Sama seperti no. 5 — `total_biaya_baru` sebelumnya hanya `subtotal_baru + total_hotel`, mengabaikan `total_transport` dan `sppd_biaya_lain`. Root cause: saat INDRASTITI dikoreksi dari tarif staf → spv, transport Rp 2.977.000 hilang dari `total_biaya` tapi sudah terdeduct di RKAP.
+
+**Script Fix Data:**
+7. Dibuat `check/fix_indrastiti_total_biaya.py` — koreksi one-time `total_biaya` INDRASTITI: dari Rp 6.400.000 → Rp 9.377.000 (tambah transport Rp 2.977.000). RKAP tidak perlu diubah (sudah benar).
+
+**RKAP Monitor (`pages/4_rkap_monitor.py`):**
+8. Tab "Detail per Bulan": tambah section detail SPPD di bawah tabel bulanan. Selectbox pilih bulan → query SPPD by `rkap_id` → tabel: Nama | Jabatan | Visum | Tujuan | Tgl Berangkat | Tgl Kembali | Status | Uang Saku | Hotel | Total. Default ke bulan pertama yang ada pemakaian.
+
+**Keputusan & Temuan:**
+- RKAP vs SPPD untuk DEWAS_ANGGOTA_2 April sudah seimbang (✅) — 28 juta = 2 trip Supriadi (Bali + Surabaya), bukan error
+- Anggaran April DEWAS_ANGGOTA_1 & DEWAS_ANGGOTA_2 = Rp 0 (belum diinput), perlu diisi jika ada anggaran
+- Kasus visum berangkat bulan X tapi deduct RKAP bulan Y (seperti visum 0028 Maret → April) adalah kondisi yang memang terjadi — perlu fitur realokasi RKAP dengan audit trail untuk pelaporan keuangan (pending)
+
+---
+
 ## Sesi 2026-04-29
 
 **Jabatan & RKAP (`utils/database.py`):**

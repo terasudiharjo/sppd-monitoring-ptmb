@@ -33,9 +33,13 @@ Aplikasi Monitoring SPPD/
 ├── data/                     # CSV data rule SPPD & RKAP
 ├── setup/                    # Script import data awal (semua DRY_RUN=True)
 └── check/
-    ├── cek_tabel.py              # Lihat semua tabel Supabase
-    ├── cek_sppd_anomali.py       # Cek SPPD nilai 0; FIX_TOTAL_HARI=True untuk auto-fix
-    └── fix_sppd_realisasi.py     # Fix manual uang saku SPPD realisasi/completed yang salah tarif
+    ├── cek_tabel.py                  # Lihat semua tabel Supabase
+    ├── cek_sppd_anomali.py           # Cek SPPD nilai 0; FIX_TOTAL_HARI=True untuk auto-fix
+    ├── cek_rkap_vs_sppd.py           # Bandingkan terpakai RKAP vs total SPPD aktif (deteksi selisih)
+    ├── cek_sppd_bulan_rkap.py        # Deteksi SPPD yang bulan deduct RKAP ≠ bulan berangkat visum
+    ├── fix_sppd_realisasi.py         # Fix manual uang saku SPPD realisasi/completed yang salah tarif
+    ├── fix_indrastiti_total_biaya.py # Fix total_biaya INDRASTITI (one-time, April 2026)
+    └── fix_visum0028_rkap_bulan.py   # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -135,6 +139,19 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 3. ~~**Sistem penomoran surat**~~ ✅ Sudah dikerjakan
 4. ~~**Manual**: tambah NURWAHYU ISLAMIATI~~ ✅ Sudah dikerjakan
 5. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
+6. **Realokasi RKAP** — fitur pindah deduct SPPD dari satu RKAP row ke row lain, dengan audit trail untuk laporan keuangan (tabel baru `rkap_realokasi` + UI di RKAP Monitor). Aturan: anggaran tidak boleh minus di laporan, penyesuaian dilakukan saat ada event perubahan anggaran.
+7. ~~**Cek SPPD salah bulan RKAP**~~ ✅ Sudah dikerjakan (sesi 2026-04-30)
+
+### ✅ Selesai sesi 2026-04-30:
+- **Fix bug `rollback_rkap`**: hapus `max(..., 0)` yang menyebabkan inkonsistensi `terpakai + sisa ≠ anggaran_awal` jika rollback > terpakai
+- **Fix bug `recalculate_sppd`**: tambah `total_biaya` ke select query; preservasi var costs (hotel + transport + biaya lain) saat recalculate uang saku — bukan hanya hotel
+- **Fix bug `fix_sppd_realisasi.py`**: sama — var costs dipertahankan dengan formula `var_costs = total_biaya_lama - uang_saku_lama`
+- **Tambah detail SPPD per bulan di RKAP Monitor Tab 3**: selectbox pilih bulan → tampil tabel siapa yang berangkat, kemana, pakai anggaran berapa (query by `rkap_id`)
+- **Fix script `cek_rkap_vs_sppd.py`**: exclude SPPD status DRAFT dari perbandingan (DRAFT belum deduct RKAP, sebelumnya dihitung sebagai error)
+- **Script diagnostik baru**: `check/investigasi_bantuan_maret.py` — investigasi targeted selisih RKAP vs SPPD
+- **Script fix data**: `check/fix_indrastiti_total_biaya.py` — koreksi `total_biaya` INDRASTITI yang kehilangan transport setelah koreksi tarif tarif staf → spv
+- **Script diagnostik baru**: `check/cek_sppd_bulan_rkap.py` — deteksi SPPD yang `rkap_id`-nya mengarah ke bulan RKAP berbeda dari bulan berangkat visum (jalankan dengan `PYTHONIOENCODING=utf-8`)
+- **Script fix data**: `check/fix_visum0028_rkap_bulan.py` — pindah deduct Visum 0028 Bali (FALIQ + Supriadi) dari RKAP April ke RKAP Maret yang benar; total Rp 21.569.800 dipindah; terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`
 
 ### ✅ Selesai sesi 2026-04-29:
 - Rename jabatan `CALON PEGAWAI` → `STAF PKWT` (di Supabase + mapping kode)
