@@ -4,6 +4,17 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-04-30 (lanjutan)
+
+**Realokasi RKAP — Implementasi Awal (⚠️ pending review user):**
+10. Schema Supabase dijalankan: tambah kolom `rkap.anggaran_pagu` (pagu asli, tidak berubah) + tabel baru `rkap_realokasi` (audit trail per batch).
+11. Tambah konstanta `KATEGORI_TO_RULE_JABATAN` dan `MIN_HARI_LOKASI` di `utils/database.py`.
+12. Tambah fungsi `get_all_rule_rates()`, `get_rkap_rows_tahun()`, `get_realokasi_history()`, `eksekusi_realokasi()` di `utils/database.py`.
+13. `pages/4_rkap_monitor.py`: Tab 1 tambah kolom "Pagu Awal" + tanda `*` jika ada realokasi. Tab 4 baru "Realokasi RKAP": riwayat per batch, form multi-sumber dengan live preview rate & sisa, tujuan, preview tabel sebelum konfirmasi, eksekusi + clear cache.
+14. Desain token: 1 trip = N hari (default 4, user-configurable). Rupiah = token × hari × rate/hari sumber. Sumber hard constraint sisa ≥ 0. Multi-sumber ke 1 tujuan per batch. Boleh cross-lokasi (rupiah sumber yang pindah, bukan hari).
+
+---
+
 ## Sesi 2026-04-30
 
 **Investigasi & Diagnostik RKAP:**

@@ -139,8 +139,9 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 3. ~~**Sistem penomoran surat**~~ ✅ Sudah dikerjakan
 4. ~~**Manual**: tambah NURWAHYU ISLAMIATI~~ ✅ Sudah dikerjakan
 5. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
-6. **Realokasi RKAP** — fitur pindah deduct SPPD dari satu RKAP row ke row lain, dengan audit trail untuk laporan keuangan (tabel baru `rkap_realokasi` + UI di RKAP Monitor). Aturan: anggaran tidak boleh minus di laporan, penyesuaian dilakukan saat ada event perubahan anggaran.
+6. **Realokasi RKAP** — ⚠️ Implementasi sudah dibuat (sesi 2026-04-30) tapi **masih dalam review**, belum diterima final. Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
 7. ~~**Cek SPPD salah bulan RKAP**~~ ✅ Sudah dikerjakan (sesi 2026-04-30)
+8. **Custom tanggal per SPPD** — dalam 1 visum yang sama, tiap peserta bisa punya durasi berbeda. Perlu UI di Tab 2 SPPD untuk set `tanggal_berangkat`/`tanggal_kembali` custom per SPPD (default = dari visum). Mempengaruhi: `total_hari`, seluruh komponen uang saku, `total_biaya`, RKAP deduct, PDF pencairan & realisasi. Perlu tambah kolom nullable di tabel `sppd`. Perlu investigasi dampak ke alur pencairan → realisasi → PDF.
 
 ### ✅ Selesai sesi 2026-04-30:
 - **Fix bug `rollback_rkap`**: hapus `max(..., 0)` yang menyebabkan inkonsistensi `terpakai + sisa ≠ anggaran_awal` jika rollback > terpakai
@@ -152,6 +153,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 - **Script fix data**: `check/fix_indrastiti_total_biaya.py` — koreksi `total_biaya` INDRASTITI yang kehilangan transport setelah koreksi tarif staf → spv; **✅ sudah dijalankan** — `total_biaya` Rp 6.400.000 → Rp 9.377.000, data DB sudah benar
 - **Script diagnostik baru**: `check/cek_sppd_bulan_rkap.py` — deteksi SPPD yang `rkap_id`-nya mengarah ke bulan RKAP berbeda dari bulan berangkat visum (jalankan dengan `PYTHONIOENCODING=utf-8`)
 - **Script fix data**: `check/fix_visum0028_rkap_bulan.py` — pindah deduct Visum 0028 Bali (FALIQ + Supriadi) dari RKAP April ke RKAP Maret yang benar; total Rp 21.569.800 dipindah; **✅ sudah dijalankan** — terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`
+- **Realokasi RKAP** (⚠️ pending review user): Tab 4 baru di RKAP Monitor + fungsi database. Detail: lihat CHANGELOG sesi 2026-04-30 dan bagian "Keputusan Desain - Realokasi RKAP"
 
 ### ✅ Selesai sesi 2026-04-29:
 - Rename jabatan `CALON PEGAWAI` → `STAF PKWT` (di Supabase + mapping kode)
@@ -161,6 +163,42 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 ---
 
 ## Keputusan Desain yang Sudah Disepakati
+
+### Realokasi RKAP (⚠️ implementasi sesi 2026-04-30, pending review)
+
+**Konsep:** Pindahkan pagu anggaran (`anggaran_awal`) antar baris RKAP. `anggaran_terpakai` tidak berubah — hanya pagu yang digeser.
+
+**Schema Supabase (sudah dijalankan):**
+- `rkap.anggaran_pagu` (INTEGER) — pagu asli tahun awal, tidak pernah berubah
+- Tabel `rkap_realokasi`: `id, batch_id, tanggal, dari_rkap_id, ke_rkap_id, jumlah_token, hari_per_token, rate_per_hari, jumlah, keterangan, created_at`
+
+**Mekanisme kalkulasi:**
+- Input: jumlah trip (token) + asumsi hari/trip (default 4, flexibel)
+- Rate/hari = `rule_sppd.uang_saku` sesuai kategori + lokasi sumber (via `KATEGORI_TO_RULE_JABATAN` di `database.py`)
+- Rupiah pindah = token × hari/trip × rate/hari (dari sumber)
+- Sumber: hard constraint sisa ≥ 0 setelah dikurangi
+- Multi-sumber → 1 tujuan dalam satu batch (1 `batch_id`)
+- Minimum hari: Dalam Kaltim=1, Luar Kaltim=3, Luar Negeri=4
+
+**Konstanta baru di `utils/database.py`:**
+- `KATEGORI_TO_RULE_JABATAN` — map kategori_jabatan RKAP → jabatan rule_sppd
+- `MIN_HARI_LOKASI` — minimum hari per lokasi_id
+
+**Fungsi baru di `utils/database.py`:**
+- `get_all_rule_rates()` — semua rate uang_saku aktif dalam satu query
+- `get_rkap_rows_tahun(tahun)` — semua row RKAP + anggaran_pagu
+- `get_realokasi_history(tahun)` — audit trail per tahun
+- `eksekusi_realokasi(ke_rkap_id, sumber_items, keterangan, tanggal)` — validasi + update + insert audit
+
+**UI di `pages/4_rkap_monitor.py` Tab 4 "Realokasi RKAP":**
+- Tab 1 ditambah kolom "Pagu Awal" + tanda `*` jika sudah ada realokasi
+- Expander riwayat realokasi (grouped by batch_id)
+- Form: input hari/trip → pilih sumber (live preview rate + sisa) → tambah ke list → pilih tujuan → preview → konfirmasi
+- Setelah konfirmasi: `load_rkap.clear()` → tampilan RKAP Monitor langsung update
+
+**Alur deduct tidak berubah** — `deduct_rkap`/`rollback_rkap` hanya sentuh `anggaran_terpakai` + `anggaran_sisa` via delta, tidak pernah reset `anggaran_awal`.
+
+---
 
 ### Penginapan (Hotel)
 
