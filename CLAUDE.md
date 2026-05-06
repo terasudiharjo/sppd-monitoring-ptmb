@@ -141,7 +141,11 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
 6. **Realokasi RKAP** — ⚠️ Implementasi sudah dibuat (sesi 2026-04-30) tapi **masih dalam review**, belum diterima final. Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
 7. ~~**Cek SPPD salah bulan RKAP**~~ ✅ Sudah dikerjakan (sesi 2026-04-30)
-8. **Custom tanggal per SPPD** — dalam 1 visum yang sama, tiap peserta bisa punya durasi berbeda. Perlu UI di Tab 2 SPPD untuk set `tanggal_berangkat`/`tanggal_kembali` custom per SPPD (default = dari visum). Mempengaruhi: `total_hari`, seluruh komponen uang saku, `total_biaya`, RKAP deduct, PDF pencairan & realisasi. Perlu tambah kolom nullable di tabel `sppd`. Perlu investigasi dampak ke alur pencairan → realisasi → PDF.
+8. ~~**Custom tanggal per SPPD**~~ ✅ Sudah dikerjakan (sesi 2026-05-06)
+
+### ✅ Selesai sesi 2026-05-06:
+- **Custom tanggal per SPPD**: kolom `tanggal_berangkat_custom` + `tanggal_kembali_custom` (nullable) di tabel `sppd`. Expander "✏️ Edit Tanggal SPPD" di Tab 2 SPPD, bisa diedit s/d status realisasi. Recalc uang saku otomatis, RKAP di-rollback & deduct ulang (pindah rkap_id jika bulan berubah). Semua PDF (pencairan, realisasi, pernyataan biaya) pakai tanggal efektif per orang.
+- Fungsi baru `update_tanggal_sppd_custom()` di `utils/database.py`
 
 ### ✅ Selesai sesi 2026-04-30:
 - **Fix bug `rollback_rkap`**: hapus `max(..., 0)` yang menyebabkan inkonsistensi `terpakai + sisa ≠ anggaran_awal` jika rollback > terpakai
@@ -323,6 +327,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `update_rekap_spd(spd_id)` | Hitung ulang total per kategori di `spd` |
 | `get_all_sppd()` | Semua SPPD (join visum + pegawai) |
 | `recalculate_sppd(sppd_id)` | Hitung ulang uang saku dari rule terkini (draft/pencairan saja) |
+| `update_tanggal_sppd_custom(sppd_id, tgl_b, tgl_k)` | Update tanggal custom per SPPD + recalc uang saku + adjust RKAP |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
 | `save_transport_detail(sppd_id, items, tgl_b, tgl_k)` | Simpan rincian leg perjalanan (replace) |
