@@ -284,6 +284,129 @@ def rollback_rkap(rkap_id: str, jumlah: int):
     }).eq("id", rkap_id).execute()
     return True
 
+# ─── REALOKASI RKAP ────────────────────────────────────
+
+# Mapping kategori_jabatan RKAP → nama jabatan di tabel rule_sppd
+KATEGORI_TO_RULE_JABATAN = {
+    "DEWAS_KETUA":               "DIREKTUR UTAMA",
+    "DEWAS_ANGGOTA_1":           "DIREKTUR BIDANG",
+    "DEWAS_ANGGOTA_2":           "DIREKTUR BIDANG",
+    "DIRUT":                     "DIREKTUR UTAMA",
+    "DIRUM":                     "DIREKTUR BIDANG",
+    "DIRTEK":                    "DIREKTUR BIDANG",
+    "DIROPS":                    "DIREKTUR BIDANG",
+    "ADM_MANAJER":               "MANAJER",
+    "TEKNIK_MANAJER":            "MANAJER",
+    "ADM_SUPERVISOR":            "SUPERVISOR",
+    "TEKNIK_SUPERVISOR":         "SUPERVISOR",
+    "ADM_STAF_PELAKSANA":        "STAF PELAKSANA",
+    "TEKNIK_STAF_PELAKSANA":     "STAF PELAKSANA",
+    "bantuan_sppd":              "STAF PELAKSANA",
+    "bantuan_sppd_luar_negeri":  "STAF PELAKSANA",
+}
+
+# Minimum hari per lokasi untuk 1 trip yang valid
+MIN_HARI_LOKASI = {
+    LOKASI_DALAM: 1,
+    LOKASI_LUAR:  3,
+    LOKASI_LN:    4,
+}
+
+def get_all_rule_rates() -> dict:
+    """Return {(rule_jabatan, lokasi_id): uang_saku} dari semua rule aktif. Untuk keperluan kalkulasi realokasi."""
+    db = get_client()
+    res = db.table("rule_sppd").select("jabatan, lokasi_id, uang_saku").eq("status", "aktif").execute()
+    return {(r["jabatan"], r["lokasi_id"]): int(r.get("uang_saku") or 0) for r in (res.data or [])}
+
+def get_rkap_rows_tahun(tahun: int) -> list:
+    """Semua row RKAP untuk 1 tahun, lengkap dengan anggaran_pagu."""
+    db = get_client()
+    res = db.table("rkap")\
+        .select("id, kategori_jabatan, lokasi_id, bulan, tahun, anggaran_pagu, anggaran_awal, anggaran_terpakai, anggaran_sisa")\
+        .eq("tahun", tahun)\
+        .execute()
+    return res.data or []
+
+def get_realokasi_history(tahun: int) -> list:
+    """History realokasi untuk tahun tertentu, urut terbaru dulu."""
+    db = get_client()
+    res = db.table("rkap_realokasi")\
+        .select("*")\
+        .gte("tanggal", f"{tahun}-01-01")\
+        .lte("tanggal", f"{tahun}-12-31")\
+        .order("created_at", desc=True)\
+        .execute()
+    return res.data or []
+
+def eksekusi_realokasi(
+    ke_rkap_id: str,
+    sumber_items: list,
+    keterangan: str,
+    tanggal: str,
+) -> tuple:
+    """
+    Eksekusi realokasi RKAP. Untuk setiap item sumber:
+      - kurangi anggaran_awal + anggaran_sisa dari row sumber
+      - tambah anggaran_awal + anggaran_sisa ke row tujuan
+      - insert record audit trail ke rkap_realokasi
+    Returns (True, "") atau (False, pesan_error).
+    """
+    import uuid as _uuid
+    db = get_client()
+    batch_id = str(_uuid.uuid4())
+    total = sum(item["jumlah"] for item in sumber_items)
+
+    # Validasi fresh: sisa sumber masih mencukupi
+    for item in sumber_items:
+        r = db.table("rkap")\
+            .select("anggaran_sisa, kategori_jabatan, bulan")\
+            .eq("id", item["dari_rkap_id"]).single().execute()
+        if not r.data:
+            return False, "RKAP sumber tidak ditemukan."
+        if r.data["anggaran_sisa"] < item["jumlah"]:
+            bln = r.data["bulan"]
+            return False, (
+                f"Sisa {r.data['kategori_jabatan']} bulan {bln} tidak cukup "
+                f"(sisa Rp {r.data['anggaran_sisa']:,}, perlu Rp {item['jumlah']:,})."
+            )
+
+    # Kurangi anggaran_awal + sisa dari setiap sumber
+    for item in sumber_items:
+        r = db.table("rkap").select("anggaran_awal, anggaran_sisa")\
+            .eq("id", item["dari_rkap_id"]).single().execute()
+        db.table("rkap").update({
+            "anggaran_awal": r.data["anggaran_awal"] - item["jumlah"],
+            "anggaran_sisa": r.data["anggaran_sisa"] - item["jumlah"],
+        }).eq("id", item["dari_rkap_id"]).execute()
+
+    # Tambah ke tujuan
+    r = db.table("rkap").select("anggaran_awal, anggaran_sisa")\
+        .eq("id", ke_rkap_id).single().execute()
+    if not r.data:
+        return False, "RKAP tujuan tidak ditemukan."
+    db.table("rkap").update({
+        "anggaran_awal": r.data["anggaran_awal"] + total,
+        "anggaran_sisa": r.data["anggaran_sisa"] + total,
+    }).eq("id", ke_rkap_id).execute()
+
+    # Insert audit trail (satu record per sumber → satu tujuan)
+    db.table("rkap_realokasi").insert([
+        {
+            "batch_id": batch_id,
+            "tanggal": tanggal,
+            "dari_rkap_id": item["dari_rkap_id"],
+            "ke_rkap_id": ke_rkap_id,
+            "jumlah_token": item["jumlah_token"],
+            "hari_per_token": item["hari_per_token"],
+            "rate_per_hari": item["rate_per_hari"],
+            "jumlah": item["jumlah"],
+            "keterangan": keterangan,
+        }
+        for item in sumber_items
+    ]).execute()
+
+    return True, ""
+
 # ─── CARI RKAP ID ──────────────────────────────────────
 def get_rkap_id(struktur_rkap: str, lokasi_id: str, bulan: int, tahun: int):
     db = get_client()
@@ -556,6 +679,100 @@ def recalculate_sppd(sppd_id: str) -> dict:  # noqa
              f"({'rule ditemukan' if rule else 'rule tidak ditemukan, biaya 0'}). "
              f"Selisih: Rp {selisih:,}".replace(",", "."))
     return {"success": True, "pesan": pesan, "selisih": selisih}
+
+
+def update_tanggal_sppd_custom(sppd_id: str, tgl_berangkat: date, tgl_kembali: date) -> dict:
+    """
+    Update tanggal custom per SPPD (override tanggal visum) + recalc uang saku + adjust RKAP.
+    Boleh dipanggil untuk status: draft, pencairan, realisasi.
+    Jika bulan berangkat berubah → RKAP lama di-rollback, rkap_id baru dicari & di-deduct.
+    Return: {"success": bool, "pesan": str}
+    """
+    db = get_client()
+
+    res = db.table("sppd")\
+        .select("id, status, pegawai_id, lokasi_id, total_hari,"
+                " subtotal_uang_saku, total_biaya, rkap_id, spd_id")\
+        .eq("id", sppd_id).single().execute()
+    if not res.data:
+        return {"success": False, "pesan": "SPPD tidak ditemukan"}
+
+    sppd = res.data
+    if sppd["status"] in ("completed", "cancelled"):
+        return {"success": False, "pesan": f"SPPD status {sppd['status'].upper()} tidak dapat diubah tanggalnya"}
+
+    total_hari_baru = (tgl_kembali - tgl_berangkat).days + 1
+
+    pegawai = get_pegawai_by_id(sppd["pegawai_id"])
+    if not pegawai:
+        return {"success": False, "pesan": "Pegawai tidak ditemukan"}
+
+    jabatan_id = pegawai.get("jabatan_id")
+    lokasi_id  = sppd["lokasi_id"]
+
+    rule = None
+    if jabatan_id and lokasi_id:
+        try:
+            rule = get_rule_sppd(jabatan_id, lokasi_id)
+        except Exception:
+            rule = None
+
+    calc = hitung_uang_saku(rule, total_hari_baru) if rule else {
+        "uang_harian": 0, "uang_makan": 0, "transport_lokal": 0, "uang_rep": 0, "subtotal": 0
+    }
+
+    subtotal_baru = calc["subtotal"]
+    subtotal_lama = sppd.get("subtotal_uang_saku") or 0
+
+    # Pertahankan var costs (hotel + transport + biaya lain) — hanya uang saku yang recalc
+    var_costs = max(0, (sppd.get("total_biaya") or 0) - subtotal_lama)
+    total_biaya_baru = subtotal_baru + var_costs
+
+    # Adjust RKAP hanya jika status pencairan/realisasi
+    rkap_id_lama = sppd.get("rkap_id")
+    rkap_id_baru = rkap_id_lama
+
+    if sppd["status"] in ("pencairan", "realisasi") and rkap_id_lama:
+        total_biaya_lama = sppd.get("total_biaya") or 0
+
+        # Resolve rkap_id untuk bulan/tahun baru
+        struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
+        bidang   = pegawai.get("bidang_resolved", "") or ""
+        kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id)
+        rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id
+
+        rkap_id_cek = get_rkap_id(kategori, rkap_lokasi_id, tgl_berangkat.month, tgl_berangkat.year)
+
+        # Rollback seluruh total_biaya lama dari rkap lama
+        rollback_rkap(rkap_id_lama, total_biaya_lama)
+
+        if rkap_id_cek:
+            rkap_id_baru = rkap_id_cek
+            deduct_rkap(rkap_id_baru, total_biaya_baru)
+        else:
+            rkap_id_baru = None  # RKAP bulan baru tidak ada, deduct tidak dilakukan
+
+    db.table("sppd").update({
+        "tanggal_berangkat_custom": str(tgl_berangkat),
+        "tanggal_kembali_custom":   str(tgl_kembali),
+        "total_hari":               total_hari_baru,
+        "uang_harian_total":        calc["uang_harian"],
+        "uang_makan_total":         calc["uang_makan"],
+        "transport_lokal_total":    calc["transport_lokal"],
+        "uang_representasi_total":  calc["uang_rep"],
+        "subtotal_uang_saku":       subtotal_baru,
+        "total_biaya":              total_biaya_baru,
+        "rkap_id":                  rkap_id_baru,
+    }).eq("id", sppd_id).execute()
+
+    if sppd.get("spd_id"):
+        update_rekap_spd(sppd["spd_id"])
+
+    pesan = f"Tanggal diperbarui. Durasi: {total_hari_baru} hari."
+    if rkap_id_lama and rkap_id_lama != rkap_id_baru:
+        pesan += " RKAP dipindah ke bulan baru." if rkap_id_baru else \
+                 " ⚠️ RKAP untuk bulan baru tidak ditemukan — deduct tidak dilakukan."
+    return {"success": True, "pesan": pesan}
 
 
 def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:

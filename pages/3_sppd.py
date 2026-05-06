@@ -7,7 +7,7 @@ from utils.database import (
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
-    recalculate_sppd,
+    recalculate_sppd, update_tanggal_sppd_custom,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -208,6 +208,21 @@ with tab2:
 
             s = sppd_options[st.session_state[state_key]]
 
+            # Helper & data yang dipakai di banyak tempat dalam section ini
+            def _parse_date(d):
+                if not d: return date.today()
+                if isinstance(d, date): return d
+                try: return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+                except: return date.today()
+
+            visum_data   = s.get("visum") or {}
+            pegawai_data = s.get("pegawai") or {}
+            spd_data     = s.get("spd") or {}
+
+            # Tanggal efektif: custom per-SPPD jika ada, fallback ke tanggal visum
+            tgl_eff_b = _parse_date(s.get("tanggal_berangkat_custom") or visum_data.get("tanggal_berangkat"))
+            tgl_eff_k = _parse_date(s.get("tanggal_kembali_custom") or visum_data.get("tanggal_kembali"))
+
             # ── Info Cards ──
             col1, col2, col3 = st.columns(3)
             col1.metric("Pegawai", s["pegawai"]["nama"] if s.get("pegawai") else "-")
@@ -241,21 +256,39 @@ with tab2:
                 st.markdown(f"- Biaya Lain &nbsp;: **{format_rupiah(biaya_lain_disp)}**")
                 st.markdown(f"**Total Realisasi : {format_rupiah(s.get('total_biaya', 0))}**")
 
+            # ── Edit Tanggal Custom per SPPD ──
+            if s["status"] not in ["completed", "cancelled"]:
+                with st.expander("✏️ Edit Tanggal SPPD"):
+                    if s.get("tanggal_berangkat_custom"):
+                        tgl_visum_b = visum_data.get("tanggal_berangkat", "")
+                        tgl_visum_k = visum_data.get("tanggal_kembali", "")
+                        st.info(f"⚡ Menggunakan tanggal custom. Tanggal visum: {tgl_visum_b} s/d {tgl_visum_k}")
+                    else:
+                        st.caption("Saat ini mengikuti tanggal visum. Ubah jika orang ini punya jadwal berbeda.")
+
+                    with st.form(f"form_tanggal_sppd_{s['id']}"):
+                        col_t1, col_t2 = st.columns(2)
+                        with col_t1:
+                            edit_tgl_b_sppd = st.date_input("Tanggal Berangkat", value=tgl_eff_b)
+                        with col_t2:
+                            edit_tgl_k_sppd = st.date_input("Tanggal Kembali", value=tgl_eff_k)
+
+                        simpan_tgl_sppd = st.form_submit_button("💾 Simpan Tanggal SPPD", use_container_width=True)
+                        if simpan_tgl_sppd:
+                            if edit_tgl_k_sppd < edit_tgl_b_sppd:
+                                st.error("❌ Tanggal kembali tidak boleh sebelum tanggal berangkat!")
+                            else:
+                                hasil_tgl = update_tanggal_sppd_custom(s["id"], edit_tgl_b_sppd, edit_tgl_k_sppd)
+                                if hasil_tgl["success"]:
+                                    st.success(f"✅ {hasil_tgl['pesan']}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {hasil_tgl['pesan']}")
+
             st.markdown("---")
 
             # ── 🖨️ PRINT DOKUMEN ──
             st.markdown("#### 🖨️ Print Dokumen")
-
-            # Helper: siapkan data dasar untuk PDF
-            def _parse_date(d):
-                if not d: return date.today()
-                if isinstance(d, date): return d
-                try: return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
-                except: return date.today()
-
-            visum_data  = s.get("visum") or {}
-            pegawai_data = s.get("pegawai") or {}
-            spd_data    = s.get("spd") or {}
 
             _jab_fmt = format_jabatan_sppd_penerima(
                 pegawai_data.get("jabatan", {}).get("nama", ""),
@@ -268,8 +301,8 @@ with tab2:
                 "nomor_spd":        spd_data.get("nomor_spd", "-"),
                 "tanggal":          _parse_date(visum_data.get("tanggal_visum")) or date.today(),
                 "tempat_tujuan":    visum_data.get("tujuan", ""),
-                "tgl_berangkat":    _parse_date(visum_data.get("tanggal_berangkat")),
-                "tgl_kembali":      _parse_date(visum_data.get("tanggal_kembali")),
+                "tgl_berangkat":    tgl_eff_b,
+                "tgl_kembali":      tgl_eff_k,
                 "lama_hari":        s.get("total_hari", 0),
                 "nama_penerima":    pegawai_data.get("nama", "").title(),
                 "jabatan_penerima": _jab_label,
@@ -346,7 +379,7 @@ with tab2:
                                     bidang = p["bidang"] if p else None
                                 kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
                                 rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else s["lokasi_id"]
-                                tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
+                                tgl = s.get("tanggal_berangkat_custom") or visum_data.get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])
                                     rkap_id = get_rkap_id(kategori, rkap_lokasi_id, bulan, tahun)
@@ -456,8 +489,8 @@ with tab2:
                         "jabatan":                _jab_label,
                         "nomor_surat_tugas":      spd_data.get("nomor_spd", "-").replace("-O", "-F"),
                         "tempat_kegiatan":        visum_data.get("tujuan", ""),
-                        "tanggal_berangkat":      visum_data.get("tanggal_berangkat"),
-                        "tanggal_kembali":        visum_data.get("tanggal_kembali"),
+                        "tanggal_berangkat":      s.get("tanggal_berangkat_custom") or visum_data.get("tanggal_berangkat"),
+                        "tanggal_kembali":        s.get("tanggal_kembali_custom") or visum_data.get("tanggal_kembali"),
                         "biaya_perjalanan":       s.get("subtotal_uang_saku", 0),
                         "biaya_penginapan":       s.get("total_hotel", 0),
                         "biaya_transport":        s.get("total_transport", 0),
@@ -539,7 +572,7 @@ with tab2:
                                     bidang = p["bidang"] if p else None
                                 kategori = resolve_kategori_rkap(struktur, bidang or "", s["lokasi_id"])
                                 rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else s["lokasi_id"]
-                                tgl = (s.get("visum") or {}).get("tanggal_berangkat", "")
+                                tgl = s.get("tanggal_berangkat_custom") or visum_data.get("tanggal_berangkat", "")
                                 if tgl:
                                     bulan = int(tgl[5:7]); tahun = int(tgl[:4])
                                     rkap_id = get_rkap_id(kategori, rkap_lokasi_id, bulan, tahun)
@@ -707,8 +740,8 @@ with tab2:
                         ]
                         save_transport_detail(
                             s["id"], valid_transport,
-                            tgl_berangkat=visum_data.get("tanggal_berangkat"),
-                            tgl_kembali=visum_data.get("tanggal_kembali"),
+                            tgl_berangkat=s.get("tanggal_berangkat_custom") or visum_data.get("tanggal_berangkat"),
+                            tgl_kembali=s.get("tanggal_kembali_custom") or visum_data.get("tanggal_kembali"),
                         )
                         total_transport = sum(int(t["biaya_transport"]) for t in valid_transport)
 
