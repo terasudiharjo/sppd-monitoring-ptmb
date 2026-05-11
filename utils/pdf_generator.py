@@ -1481,7 +1481,18 @@ def _draw_pernyataan(c, data):
     c.line(PAGE_W/2 - jw/2, y, PAGE_W/2 + jw/2, y)
     y -= 0.45*cm
     c.setFont(FONT_NORMAL, FONT_SIZE)
-    c.drawCentredString(PAGE_W/2, y, f"Nomor : {data.get('nomor_surat','')}")
+    nomor_surat = data.get("nomor_surat", "")
+    if nomor_surat:
+        c.drawCentredString(PAGE_W/2, y, f"Nomor : {nomor_surat}")
+    else:
+        label = "Nomor : "
+        label_w = c.stringWidth(label, FONT_NORMAL, FONT_SIZE)
+        line_w = 6.5 * cm
+        x_label = PAGE_W/2 - (label_w + line_w) / 2
+        c.drawString(x_label, y, label)
+        x_line = x_label + label_w
+        c.setLineWidth(0.5)
+        c.line(x_line, y - 1, x_line + line_w, y - 1)
     y -= 0.7*cm
 
     # Info lampiran

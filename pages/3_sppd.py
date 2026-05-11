@@ -482,7 +482,7 @@ with tab2:
                     dir_umum = get_pegawai_by_jabatan_nama("DIREKTUR BIDANG UMUM")
                     dir_umum_nama = dir_umum["nama"].title() if dir_umum else "Direktur Umum"
                     pb_data = {
-                        "nomor_surat":            spd_data.get("nomor_spd", "-").replace("-O", ""),
+                        "nomor_surat":            "",  # dikosongkan, diisi manual — nanti bisa auto-generate
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
                         "tanggal_spd":            _parse_date(spd_data.get("tanggal_spd")) or date.today(),
                         "nama":                   pegawai_data.get("nama", "").title(),
