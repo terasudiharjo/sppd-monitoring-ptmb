@@ -1297,7 +1297,8 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
 
     # Header — auto-wrap kalau teks terlalu panjang
     c.setFont(FONT_BOLD, 11)
-    header_text  = f"Tanda Terima Permintaan Biaya Perjalanan Dinas {nama_pejabat}"
+    _bantuan_infix = "Bantuan " if data.get("is_bantuan") else ""
+    header_text  = f"Tanda Terima Permintaan Biaya {_bantuan_infix}Perjalanan Dinas {nama_pejabat}"
     header_lines = _wrap_text(c, header_text, FONT_BOLD, 11, CONTENT_W)
     for line in header_lines:
         c.drawString(MARGIN_L, y, line)

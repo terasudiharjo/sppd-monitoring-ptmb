@@ -7,7 +7,7 @@ from utils.database import (
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
-    recalculate_sppd, update_tanggal_sppd_custom,
+    recalculate_sppd, update_tanggal_sppd_custom, update_jabatan_dokumen_sppd,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -50,7 +50,8 @@ def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map
     elif "supervisor" in jab:
         return f"Supervisor {_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
     elif "staf" in jab or "pelaksana" in jab:
-        return f"Staf {_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
+        pkwt_tag = "PKWT " if jabatan_nama.upper() == "STAF PKWT" else ""
+        return f"Staf {pkwt_tag}{_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
     else:
         return jabatan_nama.title()
 
@@ -285,19 +286,48 @@ with tab2:
                                 else:
                                     st.error(f"❌ {hasil_tgl['pesan']}")
 
+            # ── Jabatan Dokumen (khusus Tamu) ──
+            _jabatan_nama_cek = (s.get("pegawai") or {}).get("jabatan", {}).get("nama", "")
+            if _jabatan_nama_cek.upper().startswith("TAMU") and s["status"] != "cancelled":
+                with st.expander("✏️ Jabatan Dokumen (Tamu)"):
+                    st.caption("Isi jabatan sesungguhnya untuk ditampilkan di dokumen PDF.")
+                    with st.form(f"form_jab_dokumen_{s['id']}"):
+                        jab_dok_input = st.text_input(
+                            "Jabatan untuk dokumen",
+                            value=s.get("jabatan_dokumen", "") or "",
+                            placeholder="mis. Asisten II Sekda Pemkot Balikpapan",
+                        )
+                        if st.form_submit_button("💾 Simpan Jabatan", use_container_width=True):
+                            hasil_jd = update_jabatan_dokumen_sppd(s["id"], jab_dok_input.strip())
+                            if hasil_jd["success"]:
+                                st.success(f"✅ {hasil_jd['pesan']}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {hasil_jd['pesan']}")
+
             st.markdown("---")
 
             # ── 🖨️ PRINT DOKUMEN ──
             st.markdown("#### 🖨️ Print Dokumen")
 
-            _jab_fmt = format_jabatan_sppd_penerima(
-                pegawai_data.get("jabatan", {}).get("nama", ""),
-                pegawai_data.get("divisi"),
-                divisi_map_sppd,
-            )
-            _jab_label = f"{_jab_fmt} PTMB" if _jab_fmt else ""
+            _jabatan_nama = pegawai_data.get("jabatan", {}).get("nama", "") if pegawai_data else ""
+            _struktur_rkap = pegawai_data.get("jabatan", {}).get("struktur_rkap", "") if pegawai_data else ""
+            _is_bantuan = _struktur_rkap == "BANTUAN"
+            _jabatan_dokumen = s.get("jabatan_dokumen", "") or ""
+
+            if _jabatan_nama.upper().startswith("TAMU"):
+                _jab_label = _jabatan_dokumen  # tidak ada suffix PTMB untuk tamu eksternal
+            else:
+                _jab_fmt = format_jabatan_sppd_penerima(
+                    _jabatan_nama,
+                    pegawai_data.get("divisi"),
+                    divisi_map_sppd,
+                )
+                _jab_label = f"{_jab_fmt} PTMB" if _jab_fmt else ""
+
             base_data = {
                 "nama_pejabat":     _jab_label,
+                "is_bantuan":       _is_bantuan,
                 "nomor_spd":        spd_data.get("nomor_spd", "-"),
                 "tanggal":          _parse_date(visum_data.get("tanggal_visum")) or date.today(),
                 "tempat_tujuan":    visum_data.get("tujuan", ""),

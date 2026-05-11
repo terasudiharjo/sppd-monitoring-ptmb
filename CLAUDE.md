@@ -38,8 +38,9 @@ Aplikasi Monitoring SPPD/
     ├── cek_rkap_vs_sppd.py           # Bandingkan terpakai RKAP vs total SPPD aktif (deteksi selisih)
     ├── cek_sppd_bulan_rkap.py        # Deteksi SPPD yang bulan deduct RKAP ≠ bulan berangkat visum
     ├── fix_sppd_realisasi.py         # Fix manual uang saku SPPD realisasi/completed yang salah tarif
-    ├── fix_indrastiti_total_biaya.py # Fix total_biaya INDRASTITI (one-time, April 2026)
-    └── fix_visum0028_rkap_bulan.py   # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
+    ├── fix_indrastiti_total_biaya.py    # Fix total_biaya INDRASTITI (one-time, April 2026)
+    ├── fix_visum0028_rkap_bulan.py      # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
+    └── fix_uncancel_sppd_ganden.py      # Un-cancel SPPD Ganden Aditera Ismed Visum 0049 (one-time, Mei 2026)
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -92,6 +93,7 @@ total_transport, total_hotel, total_sewa_kendaraan,
 biaya_jenazah, total_biaya,
 menginap (BOOLEAN, default TRUE),
 status (draft → pencairan → realisasi → completed / cancelled)
+jabatan_dokumen TEXT NULL  ← override label jabatan di PDF (khusus tamu eksternal)
 ```
 
 ### Kolom penting `rule_sppd`:
@@ -143,9 +145,12 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 7. ~~**Cek SPPD salah bulan RKAP**~~ ✅ Sudah dikerjakan (sesi 2026-04-30)
 8. ~~**Custom tanggal per SPPD**~~ ✅ Sudah dikerjakan (sesi 2026-05-06)
 9. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
+10. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
 ### ✅ Selesai sesi 2026-05-11:
+- **Un-cancel SPPD Ganden Aditera Ismed**: script `check/fix_uncancel_sppd_ganden.py` — SPPD tidak sengaja di-cancel dari status `pencairan` (Visum 0049, SPD 34); script ubah status kembali ke `pencairan` + re-deduct RKAP + update rekap SPD; **✅ sudah dijalankan**.
 - **Nomor Pernyataan Biaya dikosongkan (manual)**: `nomor_surat` di `pb_data` (`3_sppd.py`) diset `""`. PDF (`pdf_generator.py` `_draw_pernyataan`) — kalau nomor kosong, tampilkan garis bawah ~6.5cm untuk diisi tangan; kalau nomor terisi, tampilkan teks seperti biasa. Roadmap auto-nomor: lihat item 9 di "Belum dikerjakan".
+- **Header SPPD Bantuan/PKWT/Tamu**: PDF header sekarang dinamis — `is_bantuan=True` → sisipkan kata "Bantuan" di header; `STAF PKWT` → format "Staf PKWT {divisi}"; Tamu → pakai `jabatan_dokumen` (tanpa suffix PTMB). Kolom baru `jabatan_dokumen TEXT NULL` di tabel `sppd` (jalankan SQL: `ALTER TABLE sppd ADD COLUMN IF NOT EXISTS jabatan_dokumen TEXT NULL`). UI: expander "✏️ Jabatan Dokumen (Tamu)" muncul untuk jabatan TAMU* di Tab 2 SPPD. Fungsi baru `update_jabatan_dokumen_sppd()` di `utils/database.py`.
 
 ### ✅ Selesai sesi 2026-05-06:
 - **Custom tanggal per SPPD**: kolom `tanggal_berangkat_custom` + `tanggal_kembali_custom` (nullable) di tabel `sppd`. Expander "✏️ Edit Tanggal SPPD" di Tab 2 SPPD, bisa diedit s/d status realisasi. Recalc uang saku otomatis, RKAP di-rollback & deduct ulang (pindah rkap_id jika bulan berubah). Semua PDF (pencairan, realisasi, pernyataan biaya) pakai tanggal efektif per orang.
@@ -332,6 +337,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `get_all_sppd()` | Semua SPPD (join visum + pegawai) |
 | `recalculate_sppd(sppd_id)` | Hitung ulang uang saku dari rule terkini (draft/pencairan saja) |
 | `update_tanggal_sppd_custom(sppd_id, tgl_b, tgl_k)` | Update tanggal custom per SPPD + recalc uang saku + adjust RKAP |
+| `update_jabatan_dokumen_sppd(sppd_id, jabatan_dokumen)` | Simpan override label jabatan di PDF (untuk tamu eksternal) |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
 | `save_transport_detail(sppd_id, items, tgl_b, tgl_k)` | Simpan rincian leg perjalanan (replace) |

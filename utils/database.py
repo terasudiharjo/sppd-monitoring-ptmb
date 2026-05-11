@@ -775,6 +775,16 @@ def update_tanggal_sppd_custom(sppd_id: str, tgl_berangkat: date, tgl_kembali: d
     return {"success": True, "pesan": pesan}
 
 
+def update_jabatan_dokumen_sppd(sppd_id: str, jabatan_dokumen: str) -> dict:
+    """Simpan jabatan_dokumen (override label jabatan di PDF) untuk SPPD tamu."""
+    db = get_client()
+    try:
+        db.table("sppd").update({"jabatan_dokumen": jabatan_dokumen or None}).eq("id", sppd_id).execute()
+        return {"success": True, "pesan": "Jabatan dokumen berhasil disimpan."}
+    except Exception as e:
+        return {"success": False, "pesan": str(e)}
+
+
 def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:
     """
     Buat SPPD otomatis untuk semua peserta visum.
