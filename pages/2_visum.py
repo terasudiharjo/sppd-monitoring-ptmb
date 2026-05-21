@@ -4,7 +4,8 @@ from utils.database import (
     get_all_pegawai, get_all_divisi,
     detect_lokasi, get_or_create_spd,
     create_spd_baru, get_spd_by_id, get_spd_list_semua, assign_visum_ke_spd,
-    auto_buat_semua_sppd, sync_sppd_peserta, cancel_semua_sppd_visum
+    auto_buat_semua_sppd, sync_sppd_peserta, cancel_semua_sppd_visum,
+    update_tujuan_visum,
 )
 from utils.pdf_generator import (
     generate_visum, generate_surat_tugas, generate_spd, fmt_tgl_short, fmt_waktu_surat_tugas
@@ -465,6 +466,59 @@ with tab3:
                                     }).eq("id", visum_id).execute()
                                     st.success(f"✅ Tanggal diperbarui! Lama: {lama_baru} hari.")
                                     st.rerun()
+
+                # ── Edit Tujuan & Keperluan ──
+                if v["status"] != "cancelled":
+                    with st.expander("✏️ Edit Tujuan & Keperluan"):
+                        with st.form(f"form_edit_tujuan_{visum_id}"):
+                            tujuan_saat_ini = v["tujuan"]
+                            tujuan_idx = KOTA_OPTIONS.index(tujuan_saat_ini) + 1 \
+                                if tujuan_saat_ini in KOTA_OPTIONS else 0
+                            col_tj1, col_tj2 = st.columns([3, 2])
+                            with col_tj1:
+                                tujuan_pilihan = st.selectbox(
+                                    "Kota Tujuan",
+                                    [""] + KOTA_OPTIONS,
+                                    index=tujuan_idx,
+                                )
+                                tujuan_manual = st.text_input(
+                                    "Atau ketik kota lain",
+                                    value="" if tujuan_saat_ini in KOTA_OPTIONS else tujuan_saat_ini,
+                                    placeholder="Kosongkan jika pakai dropdown",
+                                )
+                            tujuan_input = tujuan_manual.strip() if tujuan_manual.strip() else tujuan_pilihan
+                            with col_tj2:
+                                if tujuan_input:
+                                    lok_preview = detect_lokasi(tujuan_input)
+                                    st.info(f"📍 **{lok_preview['lokasi_nama']}**")
+                                    if tujuan_input != tujuan_saat_ini:
+                                        st.warning("Tujuan berubah → semua SPPD akan direcalculate & RKAP disesuaikan.")
+                            keperluan_input = st.text_area(
+                                "Keperluan / Maksud Perjalanan",
+                                value=v["keperluan"],
+                                height=80,
+                            )
+                            simpan_tujuan = st.form_submit_button("💾 Simpan", use_container_width=True)
+                            if simpan_tujuan:
+                                if not tujuan_input:
+                                    st.error("❌ Kota tujuan wajib diisi!")
+                                elif not keperluan_input.strip():
+                                    st.error("❌ Keperluan wajib diisi!")
+                                else:
+                                    res_tj = update_tujuan_visum(
+                                        visum_id, tujuan_input, keperluan_input.strip()
+                                    )
+                                    if res_tj["success"]:
+                                        msg = "✅ Tujuan & keperluan diperbarui!"
+                                        if res_tj["n_sppd_updated"]:
+                                            msg += (
+                                                f" {res_tj['n_sppd_updated']} SPPD direcalculate"
+                                                f" (lokasi: {res_tj['lokasi_nama']})."
+                                            )
+                                        st.success(msg)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {res_tj['pesan']}")
 
                 # ── Surat Disposisi ──
                 st.markdown("---")

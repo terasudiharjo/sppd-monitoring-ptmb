@@ -147,6 +147,9 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 9. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 10. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-05-21:
+- **Edit Tujuan & Keperluan Visum**: Expander "✏️ Edit Tujuan & Keperluan" di Tab Detail & Edit Visum (tersedia untuk semua status kecuali cancelled). Jika hanya keperluan yang berubah → simple update visum. Jika tujuan berubah → semua SPPD non-cancelled diupdate `lokasi_id` + recalc uang saku dari rule baru + RKAP rollback lama & deduct ke bucket lokasi baru (termasuk SPPD status completed). Respects `tanggal_berangkat_custom` per SPPD untuk resolve bulan RKAP. Fungsi baru `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` di `utils/database.py`.
+
 ### ✅ Selesai sesi 2026-05-11:
 - **Un-cancel SPPD Ganden Aditera Ismed**: script `check/fix_uncancel_sppd_ganden.py` — SPPD tidak sengaja di-cancel dari status `pencairan` (Visum 0049, SPD 34); script ubah status kembali ke `pencairan` + re-deduct RKAP + update rekap SPD; **✅ sudah dijalankan**.
 - **Nomor Pernyataan Biaya dikosongkan (manual)**: `nomor_surat` di `pb_data` (`3_sppd.py`) diset `""`. PDF (`pdf_generator.py` `_draw_pernyataan`) — kalau nomor kosong, tampilkan garis bawah ~6.5cm untuk diisi tangan; kalau nomor terisi, tampilkan teks seperti biasa. Roadmap auto-nomor: lihat item 9 di "Belum dikerjakan".
@@ -338,6 +341,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `recalculate_sppd(sppd_id)` | Hitung ulang uang saku dari rule terkini (draft/pencairan saja) |
 | `update_tanggal_sppd_custom(sppd_id, tgl_b, tgl_k)` | Update tanggal custom per SPPD + recalc uang saku + adjust RKAP |
 | `update_jabatan_dokumen_sppd(sppd_id, jabatan_dokumen)` | Simpan override label jabatan di PDF (untuk tamu eksternal) |
+| `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` | Update tujuan+keperluan visum; jika tujuan berubah → recalc lokasi_id+uang saku semua SPPD + adjust RKAP |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
 | `save_transport_detail(sppd_id, items, tgl_b, tgl_k)` | Simpan rincian leg perjalanan (replace) |

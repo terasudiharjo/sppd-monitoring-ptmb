@@ -785,6 +785,120 @@ def update_jabatan_dokumen_sppd(sppd_id: str, jabatan_dokumen: str) -> dict:
         return {"success": False, "pesan": str(e)}
 
 
+def update_tujuan_visum(visum_id: str, tujuan_baru: str, keperluan_baru: str) -> dict:
+    """
+    Update tujuan + keperluan visum. Jika tujuan berubah:
+    - Semua SPPD non-cancelled diupdate lokasi_id + recalc uang saku
+    - RKAP di-rollback (lama) + di-deduct ke bucket lokasi baru
+    Return: {"success": bool, "pesan": str, "n_sppd_updated": int, "lokasi_nama": str}
+    """
+    db = get_client()
+
+    res_v = db.table("visum").select("tujuan, tanggal_berangkat").eq("id", visum_id).single().execute()
+    if not res_v.data:
+        return {"success": False, "pesan": "Visum tidak ditemukan", "n_sppd_updated": 0, "lokasi_nama": ""}
+
+    visum = res_v.data
+    tujuan_lama = visum["tujuan"]
+    tujuan_berubah = tujuan_baru != tujuan_lama
+
+    lokasi_info = detect_lokasi(tujuan_baru)
+    lokasi_id_baru = lokasi_info["lokasi_id"]
+
+    db.table("visum").update({"tujuan": tujuan_baru, "keperluan": keperluan_baru}).eq("id", visum_id).execute()
+
+    if not tujuan_berubah:
+        return {
+            "success": True,
+            "pesan": "Keperluan diperbarui.",
+            "n_sppd_updated": 0,
+            "lokasi_nama": lokasi_info["lokasi_nama"],
+        }
+
+    # Ambil semua SPPD non-cancelled untuk visum ini
+    res_sppd = db.table("sppd").select(
+        "id, status, pegawai_id, lokasi_id, total_hari, "
+        "subtotal_uang_saku, total_biaya, rkap_id, spd_id, tanggal_berangkat_custom"
+    ).eq("visum_id", visum_id).neq("status", "cancelled").execute()
+
+    spd_ids_updated: set = set()
+    n_ok = 0
+
+    for sppd in (res_sppd.data or []):
+        sppd_id = sppd["id"]
+
+        pegawai = get_pegawai_by_id(sppd["pegawai_id"])
+        if not pegawai:
+            continue
+
+        jabatan_id = pegawai.get("jabatan_id")
+        total_hari = sppd.get("total_hari") or 1
+
+        rule = None
+        if jabatan_id and lokasi_id_baru:
+            try:
+                rule = get_rule_sppd(jabatan_id, lokasi_id_baru)
+            except Exception:
+                rule = None
+
+        calc = hitung_uang_saku(rule, total_hari) if rule else {
+            "uang_harian": 0, "uang_makan": 0, "transport_lokal": 0, "uang_rep": 0, "subtotal": 0,
+        }
+
+        subtotal_baru = calc["subtotal"]
+        subtotal_lama = sppd.get("subtotal_uang_saku") or 0
+        var_costs = max(0, (sppd.get("total_biaya") or 0) - subtotal_lama)
+        total_biaya_baru = subtotal_baru + var_costs
+
+        rkap_id_lama = sppd.get("rkap_id")
+        rkap_id_baru = rkap_id_lama
+
+        if sppd["status"] in ("pencairan", "realisasi", "completed") and rkap_id_lama:
+            tgl_eff_str = sppd.get("tanggal_berangkat_custom") or visum["tanggal_berangkat"]
+            tgl_eff = date.fromisoformat(tgl_eff_str)
+
+            struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
+            bidang = pegawai.get("bidang_resolved", "") or ""
+            kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id_baru)
+            rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id_baru
+
+            rkap_id_cek = get_rkap_id(kategori, rkap_lokasi_id, tgl_eff.month, tgl_eff.year)
+
+            rollback_rkap(rkap_id_lama, sppd.get("total_biaya") or 0)
+
+            if rkap_id_cek:
+                rkap_id_baru = rkap_id_cek
+                deduct_rkap(rkap_id_baru, total_biaya_baru)
+            else:
+                rkap_id_baru = None
+
+        db.table("sppd").update({
+            "lokasi_id":               lokasi_id_baru,
+            "uang_harian_total":       calc["uang_harian"],
+            "uang_makan_total":        calc["uang_makan"],
+            "transport_lokal_total":   calc["transport_lokal"],
+            "uang_representasi_total": calc["uang_rep"],
+            "subtotal_uang_saku":      subtotal_baru,
+            "total_biaya":             total_biaya_baru,
+            "rkap_id":                 rkap_id_baru,
+        }).eq("id", sppd_id).execute()
+
+        if sppd.get("spd_id"):
+            spd_ids_updated.add(sppd["spd_id"])
+
+        n_ok += 1
+
+    for spd_id in spd_ids_updated:
+        update_rekap_spd(spd_id)
+
+    return {
+        "success": True,
+        "pesan": f"Tujuan & keperluan diperbarui. {n_ok} SPPD direcalculate.",
+        "n_sppd_updated": n_ok,
+        "lokasi_nama": lokasi_info["lokasi_nama"],
+    }
+
+
 def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:
     """
     Buat SPPD otomatis untuk semua peserta visum.
