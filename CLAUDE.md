@@ -41,7 +41,8 @@ Aplikasi Monitoring SPPD/
     ├── fix_indrastiti_total_biaya.py    # Fix total_biaya INDRASTITI (one-time, April 2026)
     ├── fix_visum0028_rkap_bulan.py      # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
     ├── fix_uncancel_sppd_ganden.py      # Un-cancel SPPD Ganden Aditera Ismed Visum 0049 (one-time, Mei 2026)
-    └── fix_uncomplete_sppd.py           # Un-complete SPPD (completed → realisasi); set NAMA_PEGAWAI_PATTERN + DRY_RUN=False
+    ├── fix_uncomplete_sppd.py           # Un-complete SPPD (completed → realisasi); set NAMA_PEGAWAI_PATTERN + DRY_RUN=False
+    └── fix_uncancel_visum.py            # Un-cancel visum + semua SPPD-nya; set NOMOR_VISUM_PATTERN + TARGET_STATUS_SPPD + DRY_RUN=False
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -93,7 +94,11 @@ uang_representasi_total, subtotal_uang_saku,
 total_transport, total_hotel, total_sewa_kendaraan,
 biaya_jenazah, total_biaya,
 menginap (BOOLEAN, default TRUE),
+hari_tidak_menginap (INTEGER DEFAULT 0),
+tanggal_berangkat_custom DATE NULL  ← override tanggal visum per orang
+tanggal_kembali_custom DATE NULL    ← override tanggal visum per orang
 status (draft → pencairan → realisasi → completed / cancelled)
+nomor_voucher TEXT NULL
 jabatan_dokumen TEXT NULL  ← override label jabatan di PDF (khusus tamu eksternal)
 tanpa_uang_saku BOOLEAN DEFAULT FALSE  ← jika TRUE, uang saku = 0 (hanya tiket + hotel)
 ```
@@ -140,14 +145,10 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 ### ⏳ Belum dikerjakan:
 1. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing
 2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
-3. ~~**Sistem penomoran surat**~~ ✅ Sudah dikerjakan
-4. ~~**Manual**: tambah NURWAHYU ISLAMIATI~~ ✅ Sudah dikerjakan
-5. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
-6. **Realokasi RKAP** — ⚠️ Implementasi sudah dibuat (sesi 2026-04-30) tapi **masih dalam review**, belum diterima final. Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
-7. ~~**Cek SPPD salah bulan RKAP**~~ ✅ Sudah dikerjakan (sesi 2026-04-30)
-8. ~~**Custom tanggal per SPPD**~~ ✅ Sudah dikerjakan (sesi 2026-05-06)
-9. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
-10. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
+3. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
+4. **Realokasi RKAP** — ⚠️ Implementasi sudah dibuat (sesi 2026-04-30) tapi **masih dalam review**, belum diterima final. Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
+5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
+6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
 ### ✅ Selesai sesi 2026-05-26:
 - **Tanpa Uang Saku per SPPD**: kolom baru `sppd.tanpa_uang_saku BOOLEAN DEFAULT FALSE`. Expander "✏️ Uang Saku" di Tab 2 SPPD, tersedia semua jabatan s/d status `realisasi`. Toggle ON → zero out semua komponen uang saku + rollback RKAP jika pencairan. Toggle OFF → recalc dari rule + deduct RKAP jika pencairan. `var_costs` (hotel + transport + biaya lain) tidak tersentuh. Fungsi baru `update_tanpa_uang_saku(sppd_id, enabled)` di `utils/database.py`.
@@ -362,6 +363,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 - `JABATAN_SORT_ORDER` — nama jabatan → angka urutan sorting
 - `KOTA_DALAM_KALTIM` — set nama kota dalam Kaltim (termasuk Kutai Timur, Kutai Barat, Sendawar, Ujoh Bilang per sesi 2026-04-17)
 - `LOKASI_DALAM` / `LOKASI_LUAR` / `LOKASI_LN` — UUID 3 lokasi (hardcoded)
+- `LOKASI_BANTUAN_ID` — UUID bucket RKAP bantuan (= `LOKASI_DALAM`; semua SPPD bantuan Dalam+Luar Kaltim di-deduct ke sini)
 - `KODE_STATIC = "1421002"`, `KODE_SEKPER = "10a-I"`, `KODE_VISUM = "J"`, `KODE_SPD = "O"`
 
 ---
