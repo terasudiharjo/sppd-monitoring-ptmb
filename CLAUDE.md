@@ -40,7 +40,8 @@ Aplikasi Monitoring SPPD/
     ├── fix_sppd_realisasi.py         # Fix manual uang saku SPPD realisasi/completed yang salah tarif
     ├── fix_indrastiti_total_biaya.py    # Fix total_biaya INDRASTITI (one-time, April 2026)
     ├── fix_visum0028_rkap_bulan.py      # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
-    └── fix_uncancel_sppd_ganden.py      # Un-cancel SPPD Ganden Aditera Ismed Visum 0049 (one-time, Mei 2026)
+    ├── fix_uncancel_sppd_ganden.py      # Un-cancel SPPD Ganden Aditera Ismed Visum 0049 (one-time, Mei 2026)
+    └── fix_uncomplete_sppd.py           # Un-complete SPPD (completed → realisasi); set NAMA_PEGAWAI_PATTERN + DRY_RUN=False
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -94,6 +95,7 @@ biaya_jenazah, total_biaya,
 menginap (BOOLEAN, default TRUE),
 status (draft → pencairan → realisasi → completed / cancelled)
 jabatan_dokumen TEXT NULL  ← override label jabatan di PDF (khusus tamu eksternal)
+tanpa_uang_saku BOOLEAN DEFAULT FALSE  ← jika TRUE, uang saku = 0 (hanya tiket + hotel)
 ```
 
 ### Kolom penting `rule_sppd`:
@@ -147,7 +149,12 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 9. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 10. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-05-26:
+- **Tanpa Uang Saku per SPPD**: kolom baru `sppd.tanpa_uang_saku BOOLEAN DEFAULT FALSE`. Expander "✏️ Uang Saku" di Tab 2 SPPD, tersedia semua jabatan s/d status `realisasi`. Toggle ON → zero out semua komponen uang saku + rollback RKAP jika pencairan. Toggle OFF → recalc dari rule + deduct RKAP jika pencairan. `var_costs` (hotel + transport + biaya lain) tidak tersentuh. Fungsi baru `update_tanpa_uang_saku(sppd_id, enabled)` di `utils/database.py`.
+- **Script fix_uncancel_visum.py**: Un-cancel visum beserta semua SPPD-nya. `TARGET_STATUS_SPPD = "draft"` disarankan (lanjutkan pencairan manual via UI). DRY_RUN=True dulu untuk preview.
+
 ### ✅ Selesai sesi 2026-05-21:
+- **Script fix_uncomplete_sppd.py**: Un-complete SPPD (`completed → realisasi`). Murni ganti status, tanpa menyentuh RKAP. Set `NAMA_PEGAWAI_PATTERN` + `DRY_RUN=False` untuk eksekusi. **✅ sudah dijalankan** (fix SPPD Yuniati yang tidak sengaja ter-complete).
 - **Edit Tujuan & Keperluan Visum**: Expander "✏️ Edit Tujuan & Keperluan" di Tab Detail & Edit Visum (tersedia untuk semua status kecuali cancelled). Jika hanya keperluan yang berubah → simple update visum. Jika tujuan berubah → semua SPPD non-cancelled diupdate `lokasi_id` + recalc uang saku dari rule baru + RKAP rollback lama & deduct ke bucket lokasi baru (termasuk SPPD status completed). Respects `tanggal_berangkat_custom` per SPPD untuk resolve bulan RKAP. Fungsi baru `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` di `utils/database.py`.
 
 ### ✅ Selesai sesi 2026-05-11:
@@ -341,6 +348,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `recalculate_sppd(sppd_id)` | Hitung ulang uang saku dari rule terkini (draft/pencairan saja) |
 | `update_tanggal_sppd_custom(sppd_id, tgl_b, tgl_k)` | Update tanggal custom per SPPD + recalc uang saku + adjust RKAP |
 | `update_jabatan_dokumen_sppd(sppd_id, jabatan_dokumen)` | Simpan override label jabatan di PDF (untuk tamu eksternal) |
+| `update_tanpa_uang_saku(sppd_id, enabled)` | Toggle tanpa uang saku: zero out / recalc uang saku + adjust RKAP jika pencairan |
 | `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` | Update tujuan+keperluan visum; jika tujuan berubah → recalc lokasi_id+uang saku semua SPPD + adjust RKAP |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |

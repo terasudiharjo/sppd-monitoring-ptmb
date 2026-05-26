@@ -4,6 +4,41 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-05-26
+
+**Fitur: Tanpa Uang Saku per SPPD (`pages/3_sppd.py`, `utils/database.py`):**
+1. Kolom baru `sppd.tanpa_uang_saku BOOLEAN DEFAULT FALSE` (jalankan SQL: `ALTER TABLE sppd ADD COLUMN IF NOT EXISTS tanpa_uang_saku BOOLEAN DEFAULT FALSE`).
+2. Fungsi baru `update_tanpa_uang_saku(sppd_id, enabled)` di `database.py`:
+   - `enabled=True` → zero out semua komponen uang saku (`uang_harian`, `uang_makan`, `transport_lokal`, `uang_representasi`, `subtotal_uang_saku` = 0); rollback RKAP jika status pencairan. `var_costs` (hotel + transport + biaya lain) tetap dipertahankan.
+   - `enabled=False` → recalculate uang saku dari `rule_sppd`; deduct RKAP jika status pencairan.
+3. UI: expander "✏️ Uang Saku" di Tab 2 SPPD, tersedia untuk semua jabatan s/d status `realisasi`. Checkbox "Tidak mendapat uang saku". Jika status pencairan, muncul warning RKAP sebelum tombol simpan. Expander auto-terbuka jika `tanpa_uang_saku=True`.
+
+**Script Fix Data:**
+4. Dibuat `check/fix_uncancel_visum.py` — un-cancel visum beserta semua SPPD-nya. Konfigurasi: `NOMOR_VISUM_PATTERN`, `TARGET_STATUS_SPPD` (`"draft"` disarankan — lanjutkan pencairan manual via UI), `RESTORE_VISUM_STATUS`. DRY_RUN=True dulu untuk preview.
+
+---
+
+## Sesi 2026-05-21
+
+**Fitur: Edit Tujuan & Keperluan Visum (`pages/2_visum.py`, `utils/database.py`):**
+1. Expander baru "✏️ Edit Tujuan & Keperluan" di Tab Detail & Edit Visum — tersedia untuk semua status kecuali `cancelled` (termasuk `completed` untuk koreksi data).
+2. Jika hanya `keperluan` berubah → simple `UPDATE visum`, tidak ada kalkulasi.
+3. Jika `tujuan` (kota) berubah → fungsi `update_tujuan_visum()` di `database.py`:
+   - Update `visum.tujuan` + `visum.keperluan`
+   - Loop semua SPPD non-cancelled visum tersebut
+   - Update `sppd.lokasi_id` ke lokasi baru
+   - Recalc uang saku dari `rule_sppd` lokasi baru (var costs hotel/transport/biaya lain dipertahankan)
+   - Status pencairan/realisasi/completed: rollback RKAP lama (full `total_biaya`) → deduct RKAP bucket lokasi baru
+   - Respect `tanggal_berangkat_custom` per SPPD untuk resolve bulan RKAP
+   - Update rekap SPD di akhir
+4. UI preview lokasi (`detect_lokasi`) langsung muncul saat kota diketik; warning otomatis muncul jika tujuan berubah.
+5. Perubahan di-push ke GitHub — Streamlit Cloud auto-deploy.
+
+**Script Fix Data:**
+6. Dibuat `check/fix_uncomplete_sppd.py` — un-complete SPPD (`completed → realisasi`); murni ganti status, tanpa menyentuh RKAP. Set `NAMA_PEGAWAI_PATTERN` + `DRY_RUN=False`. **✅ Sudah dijalankan** untuk SPPD Yuniati yang tidak sengaja ter-complete.
+
+---
+
 ## Sesi 2026-04-30 (lanjutan)
 
 **Realokasi RKAP — Implementasi Awal (⚠️ pending review user):**

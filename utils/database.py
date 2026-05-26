@@ -785,6 +785,79 @@ def update_jabatan_dokumen_sppd(sppd_id: str, jabatan_dokumen: str) -> dict:
         return {"success": False, "pesan": str(e)}
 
 
+def update_tanpa_uang_saku(sppd_id: str, enabled: bool) -> dict:
+    """
+    Toggle 'tanpa uang saku' untuk satu SPPD.
+    enabled=True  → zero out semua komponen uang saku; rollback RKAP jika status pencairan.
+    enabled=False → recalculate uang saku dari rule; deduct RKAP jika status pencairan.
+    Return: {"success": bool, "pesan": str}
+    """
+    db = get_client()
+
+    res = db.table("sppd").select(
+        "id, status, rkap_id, lokasi_id, total_hari, pegawai_id,"
+        " subtotal_uang_saku, total_biaya, jabatan_dokumen"
+    ).eq("id", sppd_id).single().execute()
+
+    if not res.data:
+        return {"success": False, "pesan": "SPPD tidak ditemukan."}
+
+    s       = res.data
+    status  = s["status"]
+    rkap_id = s.get("rkap_id")
+    subtotal_lama = s.get("subtotal_uang_saku") or 0
+    # var_costs = semua biaya selain uang saku (hotel, transport, biaya lain)
+    var_costs = max(0, (s.get("total_biaya") or 0) - subtotal_lama)
+
+    if enabled:
+        if status == "pencairan" and rkap_id and subtotal_lama > 0:
+            rollback_rkap(rkap_id, subtotal_lama)
+
+        db.table("sppd").update({
+            "tanpa_uang_saku":          True,
+            "uang_harian_total":        0,
+            "uang_makan_total":         0,
+            "transport_lokal_total":    0,
+            "uang_representasi_total":  0,
+            "subtotal_uang_saku":       0,
+            "total_biaya":              var_costs,
+        }).eq("id", sppd_id).execute()
+
+        pesan = "Uang saku di-nolkan."
+        if status == "pencairan" and rkap_id and subtotal_lama > 0:
+            pesan += f" RKAP di-rollback Rp {subtotal_lama:,}.".replace(",", ".")
+        return {"success": True, "pesan": pesan}
+
+    else:
+        # Ambil jabatan_id pegawai
+        peg = db.table("pegawai").select("jabatan_id").eq("id", s["pegawai_id"]).single().execute().data
+        jabatan_id = (peg or {}).get("jabatan_id")
+        rule = get_rule_sppd(jabatan_id, s["lokasi_id"]) if jabatan_id else None
+        if not rule:
+            return {"success": False, "pesan": "Rule SPPD tidak ditemukan untuk jabatan ini."}
+
+        calc = hitung_uang_saku(rule, s.get("total_hari") or 1)
+        subtotal_baru = calc["subtotal"]
+
+        db.table("sppd").update({
+            "tanpa_uang_saku":          False,
+            "uang_harian_total":        calc["uang_harian"],
+            "uang_makan_total":         calc["uang_makan"],
+            "transport_lokal_total":    calc["transport_lokal"],
+            "uang_representasi_total":  calc["uang_rep"],
+            "subtotal_uang_saku":       subtotal_baru,
+            "total_biaya":              subtotal_baru + var_costs,
+        }).eq("id", sppd_id).execute()
+
+        if status == "pencairan" and rkap_id and subtotal_baru > 0:
+            deduct_rkap(rkap_id, subtotal_baru)
+
+        pesan = f"Uang saku dikembalikan ({subtotal_baru:,}).".replace(",", ".")
+        if status == "pencairan" and rkap_id and subtotal_baru > 0:
+            pesan += " RKAP di-deduct kembali."
+        return {"success": True, "pesan": pesan}
+
+
 def update_tujuan_visum(visum_id: str, tujuan_baru: str, keperluan_baru: str) -> dict:
     """
     Update tujuan + keperluan visum. Jika tujuan berubah:

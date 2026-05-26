@@ -8,6 +8,7 @@ from utils.database import (
     save_transport_detail, get_transport_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
     recalculate_sppd, update_tanggal_sppd_custom, update_jabatan_dokumen_sppd,
+    update_tanpa_uang_saku,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -304,6 +305,35 @@ with tab2:
                                 st.rerun()
                             else:
                                 st.error(f"❌ {hasil_jd['pesan']}")
+
+            # ── Tanpa Uang Saku ──
+            if s["status"] not in ["completed", "cancelled"]:
+                _tanpa_us = s.get("tanpa_uang_saku", False) or False
+                with st.expander("✏️ Uang Saku", expanded=_tanpa_us):
+                    _new_val = st.checkbox(
+                        "Tidak mendapat uang saku",
+                        value=_tanpa_us,
+                        key=f"chk_tanpa_us_{s['id']}",
+                        help="Aktifkan jika peserta ini tidak mendapat uang saku (hanya tiket & hotel).",
+                    )
+                    if _new_val != _tanpa_us:
+                        if s["status"] == "pencairan":
+                            _uang_saku_lama = s.get("subtotal_uang_saku") or 0
+                            if _new_val:
+                                st.warning(f"⚠️ SPPD sudah di pencairan. RKAP akan di-rollback Rp {_uang_saku_lama:,}.".replace(",", "."))
+                            else:
+                                st.info("ℹ️ SPPD sudah di pencairan. Uang saku akan dihitung ulang dari rule dan RKAP di-deduct kembali.")
+                        if st.button(
+                            "💾 Simpan" + (" (non-aktifkan uang saku)" if _new_val else " (aktifkan uang saku)"),
+                            key=f"btn_tanpa_us_{s['id']}",
+                            use_container_width=True,
+                        ):
+                            hasil_us = update_tanpa_uang_saku(s["id"], _new_val)
+                            if hasil_us["success"]:
+                                st.success(f"✅ {hasil_us['pesan']}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {hasil_us['pesan']}")
 
             st.markdown("---")
 
