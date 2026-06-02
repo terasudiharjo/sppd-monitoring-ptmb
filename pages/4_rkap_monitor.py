@@ -507,11 +507,13 @@ def main():
                 return f"{kat} – {lok} – {bln}  |  sisa: {sisa_str}"
             return f"{kat} – {lok} – {bln}"
 
+        _EMPTY_RULE = {"uang_harian": 0, "plafon_pesawat": 0, "plafon_hotel": 0}
+
         def _get_rate(r):
             rule_jab = KATEGORI_TO_RULE_JABATAN.get(r.get("kategori_jabatan", ""))
             if not rule_jab:
-                return 0
-            return all_rates.get((rule_jab, r.get("lokasi_id", "")), 0)
+                return _EMPTY_RULE
+            return all_rates.get((rule_jab, r.get("lokasi_id", "")), _EMPTY_RULE)
 
         sorted_rows = sorted(all_rows, key=lambda r: (
             KATEGORI_ORDER.index(r["kategori_jabatan"]) if r["kategori_jabatan"] in KATEGORI_ORDER else 99,
@@ -581,9 +583,10 @@ def main():
                 with col_lbl:
                     st.write(lbl)
                 with col_val:
+                    nilai_trip = item["jumlah"] // item["jumlah_token"] if item["jumlah_token"] else 0
                     st.write(
-                        f"{item['jumlah_token']} trip × {item['hari_per_token']} hari "
-                        f"× {format_rp(item['rate_per_hari'])}/hari = **{format_rp(item['jumlah'])}**"
+                        f"{item['jumlah_token']} trip × {format_rp(nilai_trip)}/trip"
+                        f" = **{format_rp(item['jumlah'])}**"
                     )
                 with col_del:
                     if st.button("✕", key=f"rlk_del_{idx}", help="Hapus dari daftar"):
@@ -607,9 +610,12 @@ def main():
             )
 
             r_sel = rkap_by_id.get(sumber_sel_id, {})
-            rate_sel = _get_rate(r_sel)
+            rule_sel    = _get_rate(r_sel)
+            uang_harian = rule_sel["uang_harian"]
+            pesawat_pp  = rule_sel["plafon_pesawat"] * 2
+            hotel       = rule_sel["plafon_hotel"] * max(0, hari_per_token - 1)
+            nilai_per_token = uang_harian * hari_per_token + pesawat_pp + hotel
             sisa_sel = r_sel.get("anggaran_sisa") or 0
-            nilai_per_token = rate_sel * hari_per_token
 
             min_hari = MIN_HARI_LOKASI.get(r_sel.get("lokasi_id", ""), 1)
             min_tok = max(1, -(-min_hari // hari_per_token))
@@ -617,8 +623,12 @@ def main():
 
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
-                st.metric("Rate/hari", format_rp(rate_sel))
-                st.caption(f"Nilai/trip: {format_rp(nilai_per_token)}")
+                st.metric("Nilai/trip", format_rp(nilai_per_token))
+                st.caption(
+                    f"Harian: {format_rp(uang_harian)}/hari × {hari_per_token}  \n"
+                    f"Pesawat PP: {format_rp(pesawat_pp)}  \n"
+                    f"Hotel: {format_rp(rule_sel['plafon_hotel'])}/mlm × {max(0, hari_per_token - 1)}"
+                )
             with col_f2:
                 jumlah_token = st.number_input(
                     f"Jumlah trip (min {min_tok}, maks {max_tok})",
@@ -641,13 +651,13 @@ def main():
                 key="rlk_tambah_sumber",
             ):
                 if nilai_per_token == 0:
-                    st.error("Rate per hari tidak ditemukan untuk kategori ini.")
+                    st.error("Rate tidak ditemukan untuk kategori ini.")
                 else:
                     st.session_state.rlk_sumber_list.append({
                         "dari_rkap_id": sumber_sel_id,
                         "jumlah_token": int(jumlah_token),
                         "hari_per_token": int(hari_per_token),
-                        "rate_per_hari": int(rate_sel),
+                        "rate_per_hari": int(uang_harian),
                         "jumlah": jumlah_rp,
                     })
                     st.session_state.rlk_show_preview = False

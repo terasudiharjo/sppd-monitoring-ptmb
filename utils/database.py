@@ -313,10 +313,21 @@ MIN_HARI_LOKASI = {
 }
 
 def get_all_rule_rates() -> dict:
-    """Return {(rule_jabatan, lokasi_id): uang_saku} dari semua rule aktif. Untuk keperluan kalkulasi realokasi."""
+    """Return {(rule_jabatan, lokasi_id): {uang_harian, plafon_pesawat, plafon_hotel}} dari semua rule aktif."""
     db = get_client()
-    res = db.table("rule_sppd").select("jabatan, lokasi_id, uang_saku").eq("status", "aktif").execute()
-    return {(r["jabatan"], r["lokasi_id"]): int(r.get("uang_saku") or 0) for r in (res.data or [])}
+    res = db.table("rule_sppd").select(
+        "jabatan, lokasi_id, uang_saku, uang_makan, transport_lokal, uang_representasi, plafon_pesawat, plafon_hotel"
+    ).eq("status", "aktif").execute()
+    result = {}
+    for r in (res.data or []):
+        key = (r["jabatan"], r["lokasi_id"])
+        result[key] = {
+            "uang_harian":    int(r.get("uang_saku") or 0) + int(r.get("uang_makan") or 0)
+                            + int(r.get("transport_lokal") or 0) + int(r.get("uang_representasi") or 0),
+            "plafon_pesawat": int(r.get("plafon_pesawat") or 0),
+            "plafon_hotel":   int(r.get("plafon_hotel") or 0),
+        }
+    return result
 
 def get_rkap_rows_tahun(tahun: int) -> list:
     """Semua row RKAP untuk 1 tahun, lengkap dengan anggaran_pagu."""

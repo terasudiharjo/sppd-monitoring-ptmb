@@ -150,6 +150,9 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-05-29:
+- **Script fix_bobby_rkap_visum0054.py**: Pindah RKAP Bobby Wira Sakti (Visum 0054) dari bucket `bantuan_sppd` → `TEKNIK_STAF_PELAKSANA` Mei 2026. SPPD dibuat waktu jabatan masih STAF PKWT, padahal Bobby sudah naik jadi STAF PELAKSANA (bidang Teknik). Tarif uang saku tidak berubah (Rp 1.650.000), hanya rkap_id dipindah. **✅ sudah dijalankan**.
+
 ### ✅ Selesai sesi 2026-05-26:
 - **Tanpa Uang Saku per SPPD**: kolom baru `sppd.tanpa_uang_saku BOOLEAN DEFAULT FALSE`. Expander "✏️ Uang Saku" di Tab 2 SPPD, tersedia semua jabatan s/d status `realisasi`. Toggle ON → zero out semua komponen uang saku + rollback RKAP jika pencairan. Toggle OFF → recalc dari rule + deduct RKAP jika pencairan. `var_costs` (hotel + transport + biaya lain) tidak tersentuh. Fungsi baru `update_tanpa_uang_saku(sppd_id, enabled)` di `utils/database.py`.
 - **Script fix_uncancel_visum.py**: Un-cancel visum beserta semua SPPD-nya. `TARGET_STATUS_SPPD = "draft"` disarankan (lanjutkan pencairan manual via UI). DRY_RUN=True dulu untuk preview.

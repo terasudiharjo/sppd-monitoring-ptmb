@@ -4,6 +4,13 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-05-29
+
+**Script Fix Data:**
+1. Dibuat `check/fix_bobby_rkap_visum0054.py` — pindah RKAP Bobby Wira Sakti (Visum 0054) dari bucket `bantuan_sppd` ke `TEKNIK_STAF_PELAKSANA`. SPPD dibuat saat jabatan Bobby masih STAF PKWT, padahal sudah naik jadi STAF PELAKSANA (bidang Teknik, tujuan Samarinda). Tarif uang saku tidak berubah (Rp 1.650.000), hanya `sppd.rkap_id` dan saldo RKAP yang dikoreksi. **✅ Sudah dijalankan** — RKAP Mei 2026 sudah benar.
+
+---
+
 ## Sesi 2026-05-26
 
 **Fitur: Tanpa Uang Saku per SPPD (`pages/3_sppd.py`, `utils/database.py`):**
