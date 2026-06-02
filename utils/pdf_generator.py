@@ -1306,7 +1306,7 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
     y -= 0.1 * cm  # sedikit extra gap setelah header
     c.setFont(FONT_NORMAL, FONT_SIZE)
     c.drawString(MARGIN_L, y,
-        f"Ke Kota {tujuan}, sesuai permintaan biaya no. {nomor_spd}")
+        f"Ke Kota {tujuan}, sesuai permintaan biaya {_bantuan_infix.lower()}no. {nomor_spd}")
     y -= 0.42 * cm
     c.drawString(MARGIN_L, y,
         f"Tanggal {tgl_b} s/d {tgl_k}. (\u00b1 {lama} hari)")
