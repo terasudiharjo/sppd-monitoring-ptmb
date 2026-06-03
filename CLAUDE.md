@@ -150,6 +150,9 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-06-03:
+- **Tampilkan nomor SPD di selectbox pilih visum (Tab Detail & Edit)**: `pages/2_visum.py` — label selectbox sekarang menyertakan nomor SPD singkat, format `- SPD.034`. Data diambil dari `sppd.nomor_sppd` (query sekali, build dict `visum_id → nomor_spd`). Visum `tanpa_spd=True` tampil `- Tanpa SPD`. Visum tanpa SPPD (belum pencairan) tidak ada suffix.
+
 ### ✅ Selesai sesi 2026-06-02:
 - **Fix teks PDF permintaan biaya untuk RKAP bantuan**: `pdf_generator.py` baris 1309 — kalau `is_bantuan=True`, teks sekarang berbunyi "sesuai permintaan biaya bantuan no. {nomor_spd}" (sebelumnya tidak ada kata "bantuan").
 - **Fix kalkulasi nilai/trip realokasi RKAP**: `get_all_rule_rates()` di `utils/database.py` sekarang fetch semua komponen — `uang_saku`, `uang_makan`, `transport_lokal`, `uang_representasi`, `plafon_pesawat`, `plafon_hotel`. Formula nilai/trip di Tab Realokasi RKAP (`pages/4_rkap_monitor.py`) diubah menjadi: `(uang_saku + uang_makan + transport_lokal + uang_representasi) × hari + plafon_pesawat × 2 + plafon_hotel × (hari - 1)`. Sebelumnya hanya pakai `uang_saku` saja. UI kini tampilkan breakdown per komponen. Hanya Direktur Utama (Rp 250rb/hari) dan Direktur Bidang (Rp 150rb/hari) yang punya `uang_representasi > 0`.

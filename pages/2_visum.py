@@ -390,6 +390,14 @@ with tab3:
     if not visum_semua:
         st.info("Belum ada data visum.")
     else:
+        # Fetch nomor SPD per visum (ambil dari sppd.nomor_sppd, satu per visum)
+        res_sppd_spd = db.table("sppd").select("visum_id, nomor_sppd").execute()
+        visum_spd_map: dict = {}
+        for s in (res_sppd_spd.data or []):
+            vid = s.get("visum_id")
+            if vid and vid not in visum_spd_map and s.get("nomor_sppd"):
+                visum_spd_map[vid] = s["nomor_sppd"]
+
         col_filter, _ = st.columns([2, 2])
         with col_filter:
             show_completed = st.checkbox("Tampilkan visum completed", value=False)
@@ -401,14 +409,19 @@ with tab3:
         if not visum_filtered:
             st.info("Tidak ada visum aktif. Centang 'Tampilkan visum completed' untuk melihat semua.")
         else:
-            visum_keys = [
-                f"{v['nomor_visum']} — {v['tujuan']} [{v['status'].upper()}]"
-                for v in visum_filtered
-            ]
-            visum_by_key = {
-                f"{v['nomor_visum']} — {v['tujuan']} [{v['status'].upper()}]": v
-                for v in visum_filtered
-            }
+            def _visum_label(v: dict) -> str:
+                nomor_spd = visum_spd_map.get(v["id"])
+                if nomor_spd:
+                    urutan_spd = nomor_spd.split("/")[0]
+                    spd_part = f" - SPD.{urutan_spd}"
+                elif v.get("tanpa_spd"):
+                    spd_part = " - Tanpa SPD"
+                else:
+                    spd_part = ""
+                return f"{v['nomor_visum']} — {v['tujuan']} [{v['status'].upper()}]{spd_part}"
+
+            visum_keys = [_visum_label(v) for v in visum_filtered]
+            visum_by_key = {_visum_label(v): v for v in visum_filtered}
 
             selected = st.selectbox("Pilih Nomor Visum", visum_keys, key="detail_visum_select")
 
