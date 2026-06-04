@@ -47,14 +47,29 @@ CLAUDE_backup*.md
 # Output/report markdown dari check scripts
 check/*.md
 
-# Raw data import (file sensitif pegawai, bukan data master app)
+# Raw data import (file sensitif pegawai & keuangan, bukan data master app)
 data/DUK_2026*.csv
 data/DUK_2026*.xls
 data/DUK_2026*.xlsx
+data/DUK_PKWT*.csv
+data/data_pegawai.csv
 data/Data_Karyawan.csv
 data/PEG*.xlsx
+data/histori sppd*.csv
+data/realisasi sppd*.xlsx
+data/realisasi_sppd*.csv
+data/rkap_bantuan.csv
+data/rkap_dalam_kaltim.csv
+data/rkap_luar_kaltim.csv
 data/reporting/
 data/rkap_monitor_bulanan/
+data/template_pdf/
+
+# Session backup files (redundant dengan git history)
+backup/
+
+# One-time fix scripts (sudah dijalankan)
+fix/
 
 # Database schema reference (generated, bisa sensitif)
 schema_reference.sql
