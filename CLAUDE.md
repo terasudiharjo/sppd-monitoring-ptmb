@@ -42,7 +42,8 @@ Aplikasi Monitoring SPPD/
     ├── fix_visum0028_rkap_bulan.py      # Pindah deduct Visum 0028 dari RKAP Apr → Mar (one-time)
     ├── fix_uncancel_sppd_ganden.py      # Un-cancel SPPD Ganden Aditera Ismed Visum 0049 (one-time, Mei 2026)
     ├── fix_uncomplete_sppd.py           # Un-complete SPPD (completed → realisasi); set NAMA_PEGAWAI_PATTERN + DRY_RUN=False
-    └── fix_uncancel_visum.py            # Un-cancel visum + semua SPPD-nya; set NOMOR_VISUM_PATTERN + TARGET_STATUS_SPPD + DRY_RUN=False
+    ├── fix_uncancel_visum.py            # Un-cancel visum + semua SPPD-nya; set NOMOR_VISUM_PATTERN + TARGET_STATUS_SPPD + DRY_RUN=False
+    └── fix_reset_realokasi_batch.py     # Hard reset 1 batch realokasi RKAP; set BATCH_NUMBER (atau BATCH_ID) + DRY_RUN=False
 ```
 
 ### Test PDF (jalankan dari folder `utils/`):
@@ -146,12 +147,17 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 1. **Edit minor tampilan PDF laporan** — penyesuaian lebar kolom, font, spacing
 2. **Optimasi performa** — `st.form` untuk form realisasi, `@st.cache_data` untuk query master data
 3. **Input RKAP 2027** — belum ada UI, sementara pakai script import CSV manual
-4. **Realokasi RKAP** — ⚠️ Implementasi sudah dibuat (sesi 2026-04-30) tapi **masih dalam review**, belum diterima final. Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
+4. **Realokasi RKAP** — ✅ Fitur lengkap & diterima (sesi 2026-06-09). Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
 ### ✅ Selesai sesi 2026-06-09:
 - **Tambah kolom No. Visum & No. SPD di tabel dashboard**: `pages/1_dashboard.py` — tabel "SPPD Aktif" dan "Menunggu Realisasi" sekarang menampilkan dua kolom baru di posisi paling kiri: `No. Visum` (urutan visum, misal `0049`) dan `No. SPD` (urutan SPD, misal `034`). Data diambil via join `visum(nomor_visum)` dan `spd(nomor_spd)` pada query sppd. Helper `_urutan(nomor)` ekstrak bagian sebelum `/` pertama.
+- **Perbaikan UI Tab 4 Realokasi RKAP** (`pages/4_rkap_monitor.py`):
+  - **Ringkasan Saldo per Triwulan (pivot table)**: tabel kompak per baris Kategori+Lokasi, 4 kolom TW I–IV, sisa ditampilkan 🚨 (minus) / 🟢 (surplus). Expander per TW untuk lihat detail per bulan.
+  - **Snapshot/historis view**: selectbox "Lihat kondisi anggaran:" dengan pilihan `Anggaran Awal | Setelah Perubahan 1 | ... | Kondisi Saat Ini`. Merekonstruksi `anggaran_awal` dari `anggaran_pagu` + audit trail `rkap_realokasi` tanpa mengubah data. Berguna untuk presentasi ke keuangan.
+  - **Riwayat Realokasi**: tabel ringkas (Tanggal | Dari | Ke | Total Pindah | Keterangan) langsung visible, detail trip/rate di expander collapsed.
+- **Script `check/fix_reset_realokasi_batch.py`**: hard reset satu batch realokasi — reversal `anggaran_awal` + `anggaran_sisa` di row yang tersentuh + hapus record dari `rkap_realokasi`. Set `BATCH_NUMBER` (atau `BATCH_ID`) + `DRY_RUN=False` untuk eksekusi.
 
 ### ✅ Selesai sesi 2026-06-03:
 - **Tampilkan nomor SPD di selectbox pilih visum (Tab Detail & Edit)**: `pages/2_visum.py` — label selectbox sekarang menyertakan nomor SPD singkat, format `- SPD.034`. Data diambil dari `sppd.nomor_sppd` (query sekali, build dict `visum_id → nomor_spd`). Visum `tanpa_spd=True` tampil `- Tanpa SPD`. Visum tanpa SPPD (belum pencairan) tidak ada suffix.

@@ -527,24 +527,172 @@ def main():
         if "rlk_show_preview" not in st.session_state:
             st.session_state.rlk_show_preview = False
 
-        # ── Riwayat Realokasi ──
+        # ── Load history (dipakai di ringkasan & riwayat) ─────────────────────
         history = get_realokasi_history(tahun)
-        with st.expander(f"📋 Riwayat Realokasi {tahun} ({len(history)} record)", expanded=False):
-            if not history:
-                st.info("Belum ada riwayat realokasi untuk tahun ini.")
-            else:
-                batches_order = list(OrderedDict.fromkeys(h["batch_id"] for h in history))
-                batch_map = {}
-                for h in history:
-                    batch_map.setdefault(h["batch_id"], []).append(h)
+        batches_order = list(OrderedDict.fromkeys(h["batch_id"] for h in history))
+        batch_map = {}
+        for h in history:
+            batch_map.setdefault(h["batch_id"], []).append(h)
 
+        # ── Ringkasan Saldo per Triwulan (pivot) ─────────────────────────────
+        st.markdown("### Ringkasan Saldo Anggaran per Triwulan")
+
+        TW_COLS = {
+            "TW I\n(Jan–Mar)":   [1, 2, 3],
+            "TW II\n(Apr–Jun)":  [4, 5, 6],
+            "TW III\n(Jul–Sep)": [7, 8, 9],
+            "TW IV\n(Okt–Des)":  [10, 11, 12],
+        }
+
+        # ── Snapshot selector ─────────────────────────────────────────────────
+        snap_options = ["📌 Anggaran Awal (sebelum semua perubahan)"]
+        for i, bid in enumerate(batches_order):
+            items_b = batch_map[bid]
+            tgl = items_b[0]["tanggal"][:10]
+            ket = items_b[0].get("keterangan") or f"Perubahan {i + 1}"
+            snap_options.append(f"Setelah Perubahan {i + 1}: {ket} ({tgl})")
+        snap_options.append("✅ Kondisi Saat Ini")
+
+        snap_sel = st.selectbox(
+            "Lihat kondisi anggaran:",
+            options=snap_options,
+            index=len(snap_options) - 1,
+            key="rlk_snap_sel",
+        )
+        snap_idx = snap_options.index(snap_sel)
+        is_current = snap_idx == len(snap_options) - 1
+        is_awal    = snap_idx == 0
+
+        if not is_current:
+            st.info(f"Mode historis — menampilkan simulasi kondisi anggaran **{snap_sel}**. Data pengeluaran (terpakai) tetap menggunakan data aktual saat ini.")
+
+        # ── Bangun snap_awal: anggaran_awal tiap row di snapshot yang dipilih ─
+        # Mulai dari anggaran_pagu (anggaran asli, tidak pernah berubah)
+        snap_awal = {r["id"]: (r.get("anggaran_pagu") or r.get("anggaran_awal") or 0) for r in all_rows}
+
+        if is_current:
+            snap_awal = {r["id"]: (r.get("anggaran_awal") or 0) for r in all_rows}
+        elif not is_awal:
+            # Apply batch 1 s/d snap_idx (snap_idx=1 → batch pertama, dst)
+            for bid in batches_order[:snap_idx]:
+                for item in batch_map[bid]:
+                    if item["dari_rkap_id"] in snap_awal:
+                        snap_awal[item["dari_rkap_id"]] -= item["jumlah"]
+                    if item["ke_rkap_id"] in snap_awal:
+                        snap_awal[item["ke_rkap_id"]]   += item["jumlah"]
+
+        def _sisa_snap(r):
+            awal     = snap_awal.get(r["id"], 0)
+            terpakai = r.get("anggaran_terpakai") or 0
+            if is_current:
+                return r.get("anggaran_sisa") or 0
+            return awal - terpakai
+
+        # ── Pivot tabel TW ────────────────────────────────────────────────────
+        def _fmt_tw_sisa(val):
+            if val < 0:
+                return f"🚨 -{abs(int(val)):,}".replace(",", ".")
+            return f"🟢 {int(val):,}".replace(",", ".")
+
+        tw_totals = {}
+        for r in all_rows:
+            key = (r["kategori_jabatan"], r["lokasi_id"])
+            if key not in tw_totals:
+                tw_totals[key] = {tw: 0 for tw in TW_COLS}
+            for tw_label, bulan_list in TW_COLS.items():
+                if r["bulan"] in bulan_list:
+                    tw_totals[key][tw_label] += _sisa_snap(r)
+
+        pivot_rows = []
+        for (kat_raw, lok_id), tw_vals in sorted(
+            tw_totals.items(),
+            key=lambda x: (
+                KATEGORI_ORDER.index(x[0][0]) if x[0][0] in KATEGORI_ORDER else 99,
+                LOKASI_ID_ORDER.index(x[0][1]) if x[0][1] in LOKASI_ID_ORDER else 9,
+            )
+        ):
+            row = {
+                "Kategori": KATEGORI_DISPLAY.get(kat_raw, kat_raw),
+                "Lokasi":   LOKASI_LABEL.get(lok_id, "?"),
+            }
+            for tw_label in TW_COLS:
+                row[tw_label.replace("\n", " ")] = _fmt_tw_sisa(tw_vals[tw_label])
+            pivot_rows.append(row)
+
+        if pivot_rows:
+            st.dataframe(pd.DataFrame(pivot_rows), use_container_width=True, hide_index=True)
+        st.caption("🚨 = minus (perlu tambahan)  |  🟢 = surplus (bisa jadi sumber)")
+
+        # ── Detail per TW (expander) ──────────────────────────────────────────
+        st.markdown("**Detail saldo per bulan dalam triwulan:**")
+        for tw_label, bulan_list in TW_COLS.items():
+            tw_label_short = tw_label.replace("\n", " ")
+            with st.expander(f"📅 {tw_label_short}", expanded=False):
+                det_rows = []
+                for r in sorted_rows:
+                    if r["bulan"] not in bulan_list:
+                        continue
+                    awal_r   = snap_awal.get(r["id"], 0)
+                    terpakai = r.get("anggaran_terpakai") or 0
+                    sisa     = _sisa_snap(r)
+                    pct      = (terpakai / awal_r * 100) if awal_r > 0 else 0
+                    if sisa < 0:
+                        st_icon = "🚨"
+                    elif pct >= 90:
+                        st_icon = "🔴"
+                    elif pct >= 75:
+                        st_icon = "🟡"
+                    else:
+                        st_icon = "🟢"
+                    det_rows.append({
+                        "Kategori": KATEGORI_DISPLAY.get(r["kategori_jabatan"], r["kategori_jabatan"]),
+                        "Lokasi":   LOKASI_LABEL.get(r["lokasi_id"], "?"),
+                        "Bulan":    BULAN_LABEL.get(r["bulan"], str(r["bulan"])),
+                        "Anggaran": format_rp(awal_r),
+                        "Terpakai": format_rp(terpakai),
+                        "Sisa":     format_rp(sisa),
+                        "St":       st_icon,
+                    })
+                if det_rows:
+                    st.dataframe(pd.DataFrame(det_rows), use_container_width=True, hide_index=True)
+
+        st.divider()
+
+        # ── Riwayat Realokasi ──────────────────────────────────────────────────
+        st.markdown(f"### Riwayat Realokasi {tahun}")
+        if not history:
+            st.info("Belum ada riwayat realokasi untuk tahun ini.")
+        else:
+            # Tabel ringkas semua batch (langsung visible)
+            summary_hist = []
+            for bid in batches_order:
+                items_b = batch_map[bid]
+                total_b = sum(i["jumlah"] for i in items_b)
+                tgl     = items_b[0]["tanggal"][:10]
+                ke_r    = rkap_by_id.get(items_b[0]["ke_rkap_id"])
+                ke_str  = _row_label(ke_r, show_sisa=False) if ke_r else items_b[0]["ke_rkap_id"][:8]
+                dari_labels = []
+                for i in items_b:
+                    dari_r = rkap_by_id.get(i["dari_rkap_id"])
+                    dari_labels.append(_row_label(dari_r, show_sisa=False) if dari_r else i["dari_rkap_id"][:8])
+                summary_hist.append({
+                    "Tanggal":      tgl,
+                    "Dari":         " + ".join(dari_labels),
+                    "Ke":           ke_str,
+                    "Total Pindah": format_rp(total_b),
+                    "Keterangan":   items_b[0].get("keterangan") or "-",
+                })
+            st.dataframe(pd.DataFrame(summary_hist), use_container_width=True, hide_index=True)
+
+            # Detail per batch (collapsed)
+            with st.expander("Lihat detail rincian per batch", expanded=False):
                 for bid in batches_order:
                     items_b = batch_map[bid]
                     total_b = sum(i["jumlah"] for i in items_b)
-                    tgl = items_b[0]["tanggal"][:10]
-                    ke_r = rkap_by_id.get(items_b[0]["ke_rkap_id"])
-                    ke_str = _row_label(ke_r, show_sisa=False) if ke_r else items_b[0]["ke_rkap_id"][:8]
-                    ket = items_b[0].get("keterangan") or "-"
+                    tgl     = items_b[0]["tanggal"][:10]
+                    ke_r    = rkap_by_id.get(items_b[0]["ke_rkap_id"])
+                    ke_str  = _row_label(ke_r, show_sisa=False) if ke_r else items_b[0]["ke_rkap_id"][:8]
+                    ket     = items_b[0].get("keterangan") or "-"
 
                     st.markdown(f"**{tgl}** — ke: **{ke_str}** | Total: **{format_rp(total_b)}**")
                     st.caption(f"Keterangan: {ket}")
@@ -552,15 +700,16 @@ def main():
                     for i in items_b:
                         dari_r = rkap_by_id.get(i["dari_rkap_id"])
                         rows_h.append({
-                            "Dari": _row_label(dari_r, show_sisa=False) if dari_r else i["dari_rkap_id"][:8],
-                            "Trip": i["jumlah_token"],
+                            "Dari":      _row_label(dari_r, show_sisa=False) if dari_r else i["dari_rkap_id"][:8],
+                            "Trip":      i["jumlah_token"],
                             "Hari/Trip": i["hari_per_token"],
                             "Rate/Hari": format_rp(i["rate_per_hari"]),
-                            "Jumlah": format_rp(i["jumlah"]),
+                            "Jumlah":    format_rp(i["jumlah"]),
                         })
                     st.dataframe(pd.DataFrame(rows_h), use_container_width=True, hide_index=True)
                     st.markdown("---")
 
+        st.divider()
         st.markdown("### Buat Realokasi Baru")
 
         # Asumsi hari per trip
