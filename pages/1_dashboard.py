@@ -21,7 +21,7 @@ bulan_ini = date.today().month
 
 # Data SPPD
 res_sppd = db.table("sppd")\
-    .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan(struktur_rkap)), visum(tujuan, tanggal_berangkat)")\
+    .select("*, pegawai!sppd_pegawai_id_fkey(nama, jabatan(struktur_rkap)), visum(tujuan, tanggal_berangkat, nomor_visum), spd(nomor_spd)")\
     .execute()
 sppd_list = res_sppd.data
 
@@ -72,6 +72,11 @@ def format_rupiah(amount):
     if not amount:
         return "Rp 0"
     return f"Rp {int(amount):,}".replace(",", ".")
+
+def _urutan(nomor: str) -> str:
+    if not nomor:
+        return "-"
+    return nomor.split("/")[0]
 
 col1.metric("Total Visum", len(visum_list))
 col2.metric("Total Anggaran Terpakai", format_rupiah(total_biaya))
@@ -135,6 +140,8 @@ if not sppd_aktif:
     st.info("Tidak ada SPPD yang sedang aktif saat ini.")
 else:
     df_aktif = pd.DataFrame([{
+        "No. Visum": _urutan((s.get("visum") or {}).get("nomor_visum", "")),
+        "No. SPD": _urutan((s.get("spd") or {}).get("nomor_spd", "")),
         "Pegawai": s["pegawai"]["nama"] if s.get("pegawai") else "-",
         "Tujuan": s["visum"]["tujuan"] if s.get("visum") else "-",
         "Berangkat": s["visum"]["tanggal_berangkat"] if s.get("visum") else "-",
@@ -156,6 +163,8 @@ if not sppd_realisasi:
     st.info("Tidak ada SPPD yang menunggu realisasi.")
 else:
     df_realisasi = pd.DataFrame([{
+        "No. Visum": _urutan((s.get("visum") or {}).get("nomor_visum", "")),
+        "No. SPD": _urutan((s.get("spd") or {}).get("nomor_spd", "")),
         "Pegawai": s["pegawai"]["nama"] if s.get("pegawai") else "-",
         "Tujuan": s["visum"]["tujuan"] if s.get("visum") else "-",
         "Total Biaya": format_rupiah(s.get("total_biaya", 0)),
