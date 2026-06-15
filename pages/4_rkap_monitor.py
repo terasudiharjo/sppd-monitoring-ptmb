@@ -981,6 +981,49 @@ def main():
                 st.markdown("**Anggaran Sesudah Realokasi (Rp)**")
                 st.dataframe(df_after, use_container_width=True, hide_index=True)
 
+                # ── Perbandingan per Triwulan / Semester ──
+                st.divider()
+                st.markdown("#### Perbandingan per Periode")
+                periode_mode = st.radio(
+                    "Tampilkan per:",
+                    ["Triwulan", "Semester"],
+                    horizontal=True,
+                    key="rlk_periode_mode",
+                )
+                if periode_mode == "Triwulan":
+                    periode_groups = {
+                        "TW I":   [1, 2, 3],
+                        "TW II":  [4, 5, 6],
+                        "TW III": [7, 8, 9],
+                        "TW IV":  [10, 11, 12],
+                    }
+                else:
+                    periode_groups = {
+                        "Sem I":  [1, 2, 3, 4, 5, 6],
+                        "Sem II": [7, 8, 9, 10, 11, 12],
+                    }
+
+                comp_rows = []
+                for key in sorted(combo_before.keys(), key=_sort_key):
+                    kat, lok = key
+                    row = {
+                        "Kategori": KATEGORI_DISPLAY.get(kat, kat),
+                        "Lokasi":   LOKASI_LABEL.get(lok, lok),
+                    }
+                    for p_label, bulan_list in periode_groups.items():
+                        sbl   = sum(combo_before[key].get(m, 0) for m in bulan_list)
+                        ssd   = sum(combo_after[key].get(m, 0)  for m in bulan_list)
+                        delta = ssd - sbl
+                        ikon  = "🔺" if delta > 0 else ("🔻" if delta < 0 else "=")
+                        row[f"{p_label} Sebelum"] = sbl
+                        row[f"{p_label} Sesudah"] = ssd
+                        row[f"{p_label} ∆"]       = f"{ikon} {format_rp(abs(delta))}" if delta != 0 else "-"
+                    comp_rows.append(row)
+
+                if comp_rows:
+                    st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
+                    st.caption("🔺 = anggaran bertambah  |  🔻 = anggaran berkurang")
+
                 st.divider()
                 col_ok, col_cancel = st.columns([3, 1])
                 with col_ok:
