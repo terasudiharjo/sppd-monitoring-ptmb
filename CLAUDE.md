@@ -151,6 +151,14 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-06-15:
+- **Realokasi RKAP multi-pasang** (`pages/4_rkap_monitor.py` + `utils/database.py`): satu batch sekarang bisa berisi banyak pasang (dari→ke) yang berbeda-beda tujuan. Fungsi baru `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — validasi aggregate per sumber, hitung net delta per rkap_id, satu `batch_id` bersama.
+- **UI Tab 4 revamp**: form tambah move baru pilih Sumber + Tujuan sekaligus (bukan multi-sumber → 1 tujuan); hari/trip bisa beda per move (default = MIN_HARI_LOKASI sumber); effective sisa di kedua selectbox sudah memperhitungkan moves yang sudah di-queue dalam batch yang sama.
+- **Preview pivot sebelum/sesudah**: tabel Jan–Des untuk semua kategori+lokasi yang terdampak, dua tabel (Sebelum & Sesudah).
+- **Perbandingan per Triwulan/Semester**: radio button TW/Semester → dua tabel perbandingan: (1) Anggaran Sebelum vs Sesudah per periode, (2) Sisa Sebelum vs Sesudah per periode. Ikon 🟢/🔴 untuk naik/turun, 🚨 untuk sisa minus.
+- **Draft realokasi persisten** (`rkap_realokasi_draft` di Supabase): tabel baru `rkap_realokasi_draft(id, nama, tahun, keterangan, moves jsonb, created_at, updated_at)`. Fungsi baru `simpan_draft_realokasi`, `get_draft_list_realokasi`, `hapus_draft_realokasi`. UI: panel "📂 Draft Tersimpan" (muat/hapus), input nama draft, tombol "💾 Simpan Draft" → setelah finalisasi draft aktif otomatis dihapus.
+- **Riwayat realokasi**: kolom "Ke" ditambah di detail expander; summary batch multi-destination tampil "X tujuan berbeda".
+
 ### ✅ Selesai sesi 2026-06-09:
 - **Tambah kolom No. Visum & No. SPD di tabel dashboard**: `pages/1_dashboard.py` — tabel "SPPD Aktif" dan "Menunggu Realisasi" sekarang menampilkan dua kolom baru di posisi paling kiri: `No. Visum` (urutan visum, misal `0049`) dan `No. SPD` (urutan SPD, misal `034`). Data diambil via join `visum(nomor_visum)` dan `spd(nomor_spd)` pada query sppd. Helper `_urutan(nomor)` ekstrak bagian sebelum `/` pertama.
 - **Perbaikan UI Tab 4 Realokasi RKAP** (`pages/4_rkap_monitor.py`):
@@ -207,37 +215,45 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 
 ## Keputusan Desain yang Sudah Disepakati
 
-### Realokasi RKAP (⚠️ implementasi sesi 2026-04-30, pending review)
+### Realokasi RKAP (✅ selesai sesi 2026-06-15)
 
 **Konsep:** Pindahkan pagu anggaran (`anggaran_awal`) antar baris RKAP. `anggaran_terpakai` tidak berubah — hanya pagu yang digeser.
 
-**Schema Supabase (sudah dijalankan):**
+**Schema Supabase:**
 - `rkap.anggaran_pagu` (INTEGER) — pagu asli tahun awal, tidak pernah berubah
 - Tabel `rkap_realokasi`: `id, batch_id, tanggal, dari_rkap_id, ke_rkap_id, jumlah_token, hari_per_token, rate_per_hari, jumlah, keterangan, created_at`
+- Tabel `rkap_realokasi_draft`: `id, nama, tahun, keterangan, moves (jsonb), created_at, updated_at` — untuk simpan draft antar sesi
 
 **Mekanisme kalkulasi:**
-- Input: jumlah trip (token) + asumsi hari/trip (default 4, flexibel)
-- Rate/hari = `rule_sppd.uang_saku` sesuai kategori + lokasi sumber (via `KATEGORI_TO_RULE_JABATAN` di `database.py`)
-- Rupiah pindah = token × hari/trip × rate/hari (dari sumber)
-- Sumber: hard constraint sisa ≥ 0 setelah dikurangi
-- Multi-sumber → 1 tujuan dalam satu batch (1 `batch_id`)
+- Input per move: pilih sumber RKAP, pilih tujuan RKAP, hari/trip (bisa beda per move, default = MIN_HARI_LOKASI sumber), jumlah trip
+- Rate/hari = `uang_harian` (uang_saku + uang_makan + transport_lokal + uang_representasi) + pesawat PP + hotel per trip
+- Rupiah pindah = trip × (uang_harian × hari + pesawat_pp + hotel × (hari-1))
+- Satu batch = banyak pasang (dari→ke) berbeda; sumber divalidasi aggregate per rkap_id
+- Effective sisa di selectbox = actual sisa + net delta dari moves yang sudah di-queue
 - Minimum hari: Dalam Kaltim=1, Luar Kaltim=3, Luar Negeri=4
 
-**Konstanta baru di `utils/database.py`:**
+**Konstanta di `utils/database.py`:**
 - `KATEGORI_TO_RULE_JABATAN` — map kategori_jabatan RKAP → jabatan rule_sppd
 - `MIN_HARI_LOKASI` — minimum hari per lokasi_id
 
-**Fungsi baru di `utils/database.py`:**
-- `get_all_rule_rates()` — semua rate uang_saku aktif dalam satu query
+**Fungsi di `utils/database.py`:**
+- `get_all_rule_rates()` — semua rate aktif dalam satu query
 - `get_rkap_rows_tahun(tahun)` — semua row RKAP + anggaran_pagu
 - `get_realokasi_history(tahun)` — audit trail per tahun
-- `eksekusi_realokasi(ke_rkap_id, sumber_items, keterangan, tanggal)` — validasi + update + insert audit
+- `eksekusi_realokasi(ke_rkap_id, sumber_items, keterangan, tanggal)` — lama, multi-sumber → 1 tujuan (masih ada)
+- `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — baru, multi-pasang dari→ke dalam 1 batch
+- `simpan_draft_realokasi(nama, tahun, keterangan, moves)` — upsert draft by nama+tahun
+- `get_draft_list_realokasi(tahun)` — list draft tersimpan
+- `hapus_draft_realokasi(draft_id)` — hapus draft
 
 **UI di `pages/4_rkap_monitor.py` Tab 4 "Realokasi RKAP":**
-- Tab 1 ditambah kolom "Pagu Awal" + tanda `*` jika sudah ada realokasi
-- Expander riwayat realokasi (grouped by batch_id)
-- Form: input hari/trip → pilih sumber (live preview rate + sisa) → tambah ke list → pilih tujuan → preview → konfirmasi
-- Setelah konfirmasi: `load_rkap.clear()` → tampilan RKAP Monitor langsung update
+- Panel "📂 Draft Tersimpan" — muat/hapus draft yang sudah disimpan
+- Form tambah move: pilih Sumber + Tujuan, hari/trip, jumlah trip → "+ Tambah ke Daftar"
+- Daftar moves ter-queue ditampilkan dengan tombol ✕ per baris
+- Tombol "💾 Simpan Draft" (isi nama draft dulu) → tersimpan di Supabase, bisa dilanjutkan lain waktu
+- Tombol "🔍 Preview & Finalisasi" → tampilkan: tabel moves, pivot Jan–Des sebelum/sesudah, perbandingan per TW/Semester (anggaran + sisa, ikon 🟢/🔴/🚨)
+- Konfirmasi → `eksekusi_realokasi_multi()` → draft aktif auto-hapus → `load_rkap.clear()`
+- Script reset batch: `check/fix_reset_realokasi_batch.py` (set BATCH_NUMBER + DRY_RUN=False)
 
 **Alur deduct tidak berubah** — `deduct_rkap`/`rollback_rkap` hanya sentuh `anggaran_terpakai` + `anggaran_sisa` via delta, tidak pernah reset `anggaran_awal`.
 
@@ -384,6 +400,20 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 - `LOKASI_DALAM` / `LOKASI_LUAR` / `LOKASI_LN` — UUID 3 lokasi (hardcoded)
 - `LOKASI_BANTUAN_ID` — UUID bucket RKAP bantuan (= `LOKASI_DALAM`; semua SPPD bantuan Dalam+Luar Kaltim di-deduct ke sini)
 - `KODE_STATIC = "1421002"`, `KODE_SEKPER = "10a-I"`, `KODE_VISUM = "J"`, `KODE_SPD = "O"`
+- `KATEGORI_TO_RULE_JABATAN` — map kategori_jabatan RKAP → jabatan rule_sppd (untuk kalkulasi rate realokasi)
+- `MIN_HARI_LOKASI` — minimum hari per lokasi_id (Dalam=1, Luar=3, LN=4)
+
+**Fungsi realokasi & draft:**
+| Fungsi | Keterangan |
+|---|---|
+| `get_all_rule_rates()` | Semua rate aktif (uang_harian, plafon_pesawat, plafon_hotel) |
+| `get_rkap_rows_tahun(tahun)` | Semua row RKAP + anggaran_pagu untuk 1 tahun |
+| `get_realokasi_history(tahun)` | Audit trail realokasi per tahun |
+| `eksekusi_realokasi(ke_rkap_id, sumber_items, keterangan, tanggal)` | Lama: multi-sumber → 1 tujuan |
+| `eksekusi_realokasi_multi(moves, keterangan, tanggal)` | Baru: multi-pasang dari→ke dalam 1 batch |
+| `simpan_draft_realokasi(nama, tahun, keterangan, moves)` | Upsert draft by nama+tahun ke Supabase |
+| `get_draft_list_realokasi(tahun)` | List draft tersimpan untuk tahun ini |
+| `hapus_draft_realokasi(draft_id)` | Hapus draft by id |
 
 ---
 
