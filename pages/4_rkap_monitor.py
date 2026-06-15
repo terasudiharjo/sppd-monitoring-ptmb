@@ -934,8 +934,10 @@ def main():
                     affected_combos.add((r.get("kategori_jabatan",""), r.get("lokasi_id","")))
 
                 # Kumpulkan semua 12 bulan untuk setiap combo yang terdampak
-                combo_before = {}  # (kat,lok) → {bulan: anggaran_awal}
-                combo_after  = {}
+                combo_before      = {}  # (kat,lok) → {bulan: anggaran_awal}
+                combo_after       = {}
+                combo_sisa_before = {}  # (kat,lok) → {bulan: anggaran_sisa}
+                combo_sisa_after  = {}
                 for r in sorted_rows:
                     kat = r.get("kategori_jabatan","")
                     lok = r.get("lokasi_id","")
@@ -944,12 +946,17 @@ def main():
                     bln = r.get("bulan", 0)
                     key = (kat, lok)
                     if key not in combo_before:
-                        combo_before[key] = {}
-                        combo_after[key]  = {}
-                    aa = r.get("anggaran_awal", 0)
+                        combo_before[key]      = {}
+                        combo_after[key]       = {}
+                        combo_sisa_before[key] = {}
+                        combo_sisa_after[key]  = {}
+                    aa    = r.get("anggaran_awal", 0)
+                    sisa  = r.get("anggaran_sisa", 0) or 0
                     delta = affected_delta.get(r["id"], 0)
-                    combo_before[key][bln] = aa
-                    combo_after[key][bln]  = aa + delta
+                    combo_before[key][bln]      = aa
+                    combo_after[key][bln]       = aa + delta
+                    combo_sisa_before[key][bln] = sisa
+                    combo_sisa_after[key][bln]  = sisa + delta
 
                 # Sort sesuai urutan kategori
                 def _sort_key(key_tuple):
@@ -1003,6 +1010,22 @@ def main():
                         "Sem II": [7, 8, 9, 10, 11, 12],
                     }
 
+                def _delta_str(delta):
+                    if delta == 0:
+                        return "-"
+                    ikon = "🟢" if delta > 0 else "🔴"
+                    tanda = "+" if delta > 0 else "-"
+                    return f"{ikon} {tanda}{format_rp(abs(delta))}"
+
+                def _sisa_str(sisa):
+                    if sisa < 0:
+                        return f"🚨 -{format_rp(abs(sisa))}"
+                    if sisa == 0:
+                        return "0"
+                    return format_rp(sisa)
+
+                # Tabel 1: Perbandingan Anggaran
+                st.markdown("**Perbandingan Anggaran per Periode (Rp)**")
                 comp_rows = []
                 for key in sorted(combo_before.keys(), key=_sort_key):
                     kat, lok = key
@@ -1013,16 +1036,34 @@ def main():
                     for p_label, bulan_list in periode_groups.items():
                         sbl   = sum(combo_before[key].get(m, 0) for m in bulan_list)
                         ssd   = sum(combo_after[key].get(m, 0)  for m in bulan_list)
-                        delta = ssd - sbl
-                        ikon  = "🔺" if delta > 0 else ("🔻" if delta < 0 else "=")
-                        row[f"{p_label} Sebelum"] = sbl
-                        row[f"{p_label} Sesudah"] = ssd
-                        row[f"{p_label} ∆"]       = f"{ikon} {format_rp(abs(delta))}" if delta != 0 else "-"
+                        row[f"{p_label} Sbl"] = sbl
+                        row[f"{p_label} Ssd"] = ssd
+                        row[f"{p_label} ∆"]   = _delta_str(ssd - sbl)
                     comp_rows.append(row)
 
                 if comp_rows:
                     st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
-                    st.caption("🔺 = anggaran bertambah  |  🔻 = anggaran berkurang")
+
+                # Tabel 2: Perbandingan Sisa
+                st.markdown("**Perbandingan Sisa per Periode (Rp)**")
+                sisa_rows = []
+                for key in sorted(combo_sisa_before.keys(), key=_sort_key):
+                    kat, lok = key
+                    row = {
+                        "Kategori": KATEGORI_DISPLAY.get(kat, kat),
+                        "Lokasi":   LOKASI_LABEL.get(lok, lok),
+                    }
+                    for p_label, bulan_list in periode_groups.items():
+                        sbl   = sum(combo_sisa_before[key].get(m, 0) for m in bulan_list)
+                        ssd   = sum(combo_sisa_after[key].get(m, 0)  for m in bulan_list)
+                        row[f"{p_label} Sbl"] = _sisa_str(sbl)
+                        row[f"{p_label} Ssd"] = _sisa_str(ssd)
+                        row[f"{p_label} ∆"]   = _delta_str(ssd - sbl)
+                    sisa_rows.append(row)
+
+                if sisa_rows:
+                    st.dataframe(pd.DataFrame(sisa_rows), use_container_width=True, hide_index=True)
+                    st.caption("🟢 = naik  |  🔴 = turun  |  🚨 = sisa minus (perlu perhatian)")
 
                 st.divider()
                 col_ok, col_cancel = st.columns([3, 1])
