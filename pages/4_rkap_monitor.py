@@ -803,7 +803,13 @@ def main():
             tujuan_sel_id = st.selectbox(
                 "Tujuan (Ke)",
                 options=[r["id"] for r in tujuan_avail],
-                format_func=lambda rid: _row_label(rkap_by_id[rid], show_sisa=False),
+                format_func=lambda rid: (
+                    _row_label(rkap_by_id[rid], show_sisa=False)
+                    + f"  |  efektif sisa: {format_rp(max(0, _eff_sisa(rid, pending)))}"
+                    if _eff_sisa(rid, pending) >= 0
+                    else _row_label(rkap_by_id[rid], show_sisa=False)
+                    + f"  |  efektif sisa: -{format_rp(abs(_eff_sisa(rid, pending)))}"
+                ),
                 key="rlk_tujuan_sel",
             )
 
