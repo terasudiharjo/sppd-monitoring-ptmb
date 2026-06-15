@@ -418,6 +418,77 @@ def eksekusi_realokasi(
 
     return True, ""
 
+
+def eksekusi_realokasi_multi(
+    moves: list,
+    keterangan: str,
+    tanggal: str,
+) -> tuple:
+    """
+    Eksekusi realokasi multi-pasang (banyak dari→ke) dalam satu batch.
+    moves: [{dari_rkap_id, ke_rkap_id, jumlah_token, hari_per_token, rate_per_hari, jumlah}]
+    Setiap move bisa punya tujuan berbeda. Semua share satu batch_id.
+    """
+    import uuid as _uuid
+    db = get_client()
+    batch_id = str(_uuid.uuid4())
+
+    # Aggregate total deduction per source untuk validasi
+    source_totals = {}
+    for move in moves:
+        source_totals[move["dari_rkap_id"]] = (
+            source_totals.get(move["dari_rkap_id"], 0) + move["jumlah"]
+        )
+
+    # Validasi: setiap sumber harus punya cukup sisa (aggregate)
+    for rkap_id, total_deduct in source_totals.items():
+        r = db.table("rkap").select("anggaran_sisa, kategori_jabatan, bulan")\
+            .eq("id", rkap_id).single().execute()
+        if not r.data:
+            return False, "RKAP sumber tidak ditemukan."
+        if r.data["anggaran_sisa"] < total_deduct:
+            bln = r.data["bulan"]
+            return False, (
+                f"Sisa {r.data['kategori_jabatan']} bulan {bln} tidak cukup "
+                f"(sisa Rp {r.data['anggaran_sisa']:,}, perlu Rp {total_deduct:,})."
+            )
+
+    # Hitung net delta per rkap_id (sumber dikurangi, tujuan ditambah)
+    net_changes = {}
+    for move in moves:
+        net_changes[move["dari_rkap_id"]] = net_changes.get(move["dari_rkap_id"], 0) - move["jumlah"]
+        net_changes[move["ke_rkap_id"]] = net_changes.get(move["ke_rkap_id"], 0) + move["jumlah"]
+
+    # Terapkan net changes ke setiap rkap_id yang terdampak
+    for rkap_id, delta in net_changes.items():
+        r = db.table("rkap").select("anggaran_awal, anggaran_sisa")\
+            .eq("id", rkap_id).single().execute()
+        if not r.data:
+            return False, f"RKAP {rkap_id[:8]} tidak ditemukan."
+        db.table("rkap").update({
+            "anggaran_awal": r.data["anggaran_awal"] + delta,
+            "anggaran_sisa": r.data["anggaran_sisa"] + delta,
+        }).eq("id", rkap_id).execute()
+
+    # Insert audit trail — satu record per move, semua share batch_id
+    db.table("rkap_realokasi").insert([
+        {
+            "batch_id": batch_id,
+            "tanggal": tanggal,
+            "dari_rkap_id": move["dari_rkap_id"],
+            "ke_rkap_id": move["ke_rkap_id"],
+            "jumlah_token": move["jumlah_token"],
+            "hari_per_token": move["hari_per_token"],
+            "rate_per_hari": move["rate_per_hari"],
+            "jumlah": move["jumlah"],
+            "keterangan": keterangan,
+        }
+        for move in moves
+    ]).execute()
+
+    return True, ""
+
+
 # ─── CARI RKAP ID ──────────────────────────────────────
 def get_rkap_id(struktur_rkap: str, lokasi_id: str, bulan: int, tahun: int):
     db = get_client()

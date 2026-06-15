@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from utils.database import (
     get_client,
     get_all_rule_rates, get_rkap_rows_tahun, get_realokasi_history,
-    eksekusi_realokasi, MIN_HARI_LOKASI, KATEGORI_TO_RULE_JABATAN,
+    eksekusi_realokasi, eksekusi_realokasi_multi, MIN_HARI_LOKASI, KATEGORI_TO_RULE_JABATAN,
 )
 from datetime import date as _date
 from collections import OrderedDict
@@ -456,8 +456,9 @@ def main():
                 if sppd_rows:
                     det_rows = []
                     for s in sppd_rows:
-                        peg   = s.get("pegawai") or {}
-                        visum = s.get("visum") or {}
+                        peg    = s.get("pegawai") or {}
+                        visum  = s.get("visum") or {}
+                        status = s.get("status", "-")
                         det_rows.append({
                             "Nama":          peg.get("nama", "-"),
                             "Jabatan":       (peg.get("jabatan") or {}).get("nama", "-"),
@@ -465,18 +466,30 @@ def main():
                             "Tujuan":        visum.get("tujuan", "-"),
                             "Tgl Berangkat": (visum.get("tanggal_berangkat") or "")[:10],
                             "Tgl Kembali":   (visum.get("tanggal_kembali") or "")[:10],
-                            "Status":        s.get("status", "-").upper(),
+                            "Status":        ("⏳ DRAFT*" if status == "draft" else status.upper()),
                             "Uang Saku":     format_rp(s.get("subtotal_uang_saku") or 0),
                             "Hotel":         format_rp(s.get("total_hotel") or 0),
                             "Total":         format_rp(s.get("total_biaya") or 0),
                         })
                     st.dataframe(pd.DataFrame(det_rows), use_container_width=True, hide_index=True)
-                    grand = sum(s.get("total_biaya") or 0 for s in sppd_rows)
-                    st.caption(
-                        f"**{len(sppd_rows)} SPPD aktif** di {bulan_detail_pilih} "
-                        f"({kat_pilih} – {lok_pilih}) | "
-                        f"Grand Total: **{format_rp(grand)}**"
-                    )
+
+                    # Grand total hanya dari yang sudah deduct RKAP (pencairan/realisasi/completed)
+                    sudah_pencairan = [s for s in sppd_rows if s.get("status") != "draft"]
+                    draft_rows      = [s for s in sppd_rows if s.get("status") == "draft"]
+                    grand           = sum(s.get("total_biaya") or 0 for s in sudah_pencairan)
+
+                    caption_parts = [
+                        f"**{len(sudah_pencairan)} SPPD** (pencairan/realisasi/completed) di {bulan_detail_pilih} "
+                        f"({kat_pilih} – {lok_pilih}) | Total terpakai: **{format_rp(grand)}**"
+                    ]
+                    if draft_rows:
+                        grand_draft = sum(s.get("total_biaya") or 0 for s in draft_rows)
+                        caption_parts.append(
+                            f"⚠️ *\\* {len(draft_rows)} SPPD masih DRAFT — belum deduct RKAP "
+                            f"(estimasi: {format_rp(grand_draft)})*"
+                        )
+                    for cp in caption_parts:
+                        st.caption(cp)
                 else:
                     st.info(f"Tidak ada SPPD aktif yang deduct ke RKAP {bulan_detail_pilih}.")
 
@@ -522,10 +535,12 @@ def main():
         ))
 
         # ── Session state ──
-        if "rlk_sumber_list" not in st.session_state:
-            st.session_state.rlk_sumber_list = []
+        if "rlk_moves_list" not in st.session_state:
+            st.session_state.rlk_moves_list = []
         if "rlk_show_preview" not in st.session_state:
             st.session_state.rlk_show_preview = False
+        if "rlk_last_success" not in st.session_state:
+            st.session_state.rlk_last_success = None  # pesan sukses terakhir
 
         # ── Load history (dipakai di ringkasan & riwayat) ─────────────────────
         history = get_realokasi_history(tahun)
@@ -669,15 +684,25 @@ def main():
                 items_b = batch_map[bid]
                 total_b = sum(i["jumlah"] for i in items_b)
                 tgl     = items_b[0]["tanggal"][:10]
-                ke_r    = rkap_by_id.get(items_b[0]["ke_rkap_id"])
-                ke_str  = _row_label(ke_r, show_sisa=False) if ke_r else items_b[0]["ke_rkap_id"][:8]
-                dari_labels = []
-                for i in items_b:
-                    dari_r = rkap_by_id.get(i["dari_rkap_id"])
-                    dari_labels.append(_row_label(dari_r, show_sisa=False) if dari_r else i["dari_rkap_id"][:8])
+                unique_ke   = list(dict.fromkeys(i["ke_rkap_id"] for i in items_b))
+                unique_dari = list(dict.fromkeys(i["dari_rkap_id"] for i in items_b))
+                if len(unique_ke) == 1:
+                    ke_r = rkap_by_id.get(unique_ke[0])
+                    ke_str = _row_label(ke_r, show_sisa=False) if ke_r else unique_ke[0][:8]
+                else:
+                    ke_str = f"{len(unique_ke)} tujuan berbeda"
+                if len(unique_dari) <= 2:
+                    dari_labels = []
+                    for did in unique_dari:
+                        dari_r = rkap_by_id.get(did)
+                        dari_labels.append(_row_label(dari_r, show_sisa=False) if dari_r else did[:8])
+                    dari_str = " + ".join(dari_labels)
+                else:
+                    dari_str = f"{len(unique_dari)} sumber"
                 summary_hist.append({
                     "Tanggal":      tgl,
-                    "Dari":         " + ".join(dari_labels),
+                    "Move":         len(items_b),
+                    "Dari":         dari_str,
                     "Ke":           ke_str,
                     "Total Pindah": format_rp(total_b),
                     "Keterangan":   items_b[0].get("keterangan") or "-",
@@ -690,17 +715,22 @@ def main():
                     items_b = batch_map[bid]
                     total_b = sum(i["jumlah"] for i in items_b)
                     tgl     = items_b[0]["tanggal"][:10]
-                    ke_r    = rkap_by_id.get(items_b[0]["ke_rkap_id"])
-                    ke_str  = _row_label(ke_r, show_sisa=False) if ke_r else items_b[0]["ke_rkap_id"][:8]
                     ket     = items_b[0].get("keterangan") or "-"
-
-                    st.markdown(f"**{tgl}** — ke: **{ke_str}** | Total: **{format_rp(total_b)}**")
+                    unique_ke = list(dict.fromkeys(i["ke_rkap_id"] for i in items_b))
+                    if len(unique_ke) == 1:
+                        ke_r = rkap_by_id.get(unique_ke[0])
+                        ke_str = _row_label(ke_r, show_sisa=False) if ke_r else unique_ke[0][:8]
+                        st.markdown(f"**{tgl}** — {len(items_b)} move → **{ke_str}** | Total: **{format_rp(total_b)}**")
+                    else:
+                        st.markdown(f"**{tgl}** — {len(items_b)} move ke {len(unique_ke)} tujuan | Total: **{format_rp(total_b)}**")
                     st.caption(f"Keterangan: {ket}")
                     rows_h = []
                     for i in items_b:
                         dari_r = rkap_by_id.get(i["dari_rkap_id"])
+                        ke_r   = rkap_by_id.get(i["ke_rkap_id"])
                         rows_h.append({
                             "Dari":      _row_label(dari_r, show_sisa=False) if dari_r else i["dari_rkap_id"][:8],
+                            "Ke":        _row_label(ke_r, show_sisa=False) if ke_r else i["ke_rkap_id"][:8],
                             "Trip":      i["jumlah_token"],
                             "Hari/Trip": i["hari_per_token"],
                             "Rate/Hari": format_rp(i["rate_per_hari"]),
@@ -712,146 +742,148 @@ def main():
         st.divider()
         st.markdown("### Buat Realokasi Baru")
 
-        # Asumsi hari per trip
-        hari_per_token = st.number_input(
-            "Asumsi 1 trip = (hari)", min_value=1, max_value=30, value=4, step=1,
-            key="rlk_hari_per_token",
-            help="Jumlah hari per perjalanan sebagai dasar kalkulasi rupiah yang dipindahkan",
-        )
+        moves_list = st.session_state.rlk_moves_list
 
-        sumber_list = st.session_state.rlk_sumber_list
-        sumber_ids_already = {x["dari_rkap_id"] for x in sumber_list}
+        # ── Helper: net delta dari moves yang sudah diqueue ──
+        def _pending_deltas(ml):
+            d = {}
+            for m in ml:
+                d[m["dari_rkap_id"]] = d.get(m["dari_rkap_id"], 0) - m["jumlah"]
+                d[m["ke_rkap_id"]]   = d.get(m["ke_rkap_id"], 0)   + m["jumlah"]
+            return d
 
-        # Tampilkan daftar sumber yang sudah ditambahkan
-        if sumber_list:
-            st.markdown("**Daftar Sumber yang Ditambahkan:**")
-            for idx, item in enumerate(sumber_list):
-                r_s = rkap_by_id.get(item["dari_rkap_id"])
-                lbl = _row_label(r_s, show_sisa=False) if r_s else item["dari_rkap_id"][:8]
-                col_lbl, col_val, col_del = st.columns([4, 4, 1])
-                with col_lbl:
-                    st.write(lbl)
-                with col_val:
-                    nilai_trip = item["jumlah"] // item["jumlah_token"] if item["jumlah_token"] else 0
+        def _eff_sisa(rid, deltas):
+            r = rkap_by_id.get(rid, {})
+            return (r.get("anggaran_sisa") or 0) + deltas.get(rid, 0)
+
+        # ── Tampilkan daftar moves yang sudah diqueue ──
+        if moves_list:
+            st.markdown(f"**Daftar Perpindahan yang Direncanakan ({len(moves_list)} move):**")
+            for idx, move in enumerate(moves_list):
+                r_d = rkap_by_id.get(move["dari_rkap_id"])
+                r_k = rkap_by_id.get(move["ke_rkap_id"])
+                lbl_d = _row_label(r_d, show_sisa=False) if r_d else move["dari_rkap_id"][:8]
+                lbl_k = _row_label(r_k, show_sisa=False) if r_k else move["ke_rkap_id"][:8]
+                nilai_trip = move["jumlah"] // move["jumlah_token"] if move["jumlah_token"] else 0
+                col_d, col_k, col_v, col_x = st.columns([4, 4, 3, 1])
+                with col_d: st.write(f"**{lbl_d}**")
+                with col_k: st.write(f"→ {lbl_k}")
+                with col_v:
                     st.write(
-                        f"{item['jumlah_token']} trip × {format_rp(nilai_trip)}/trip"
-                        f" = **{format_rp(item['jumlah'])}**"
+                        f"{move['jumlah_token']} trip × {format_rp(nilai_trip)}"
+                        f" = **{format_rp(move['jumlah'])}**"
                     )
-                with col_del:
-                    if st.button("✕", key=f"rlk_del_{idx}", help="Hapus dari daftar"):
-                        st.session_state.rlk_sumber_list.pop(idx)
+                with col_x:
+                    if st.button("✕", key=f"rlk_del_{idx}", help="Hapus move ini"):
+                        st.session_state.rlk_moves_list.pop(idx)
                         st.session_state.rlk_show_preview = False
                         st.rerun()
             st.divider()
 
-        # Form tambah sumber baru
-        st.markdown("**Tambah Sumber Anggaran:**")
-        sumber_avail = [r for r in sorted_rows if r["id"] not in sumber_ids_already]
+        # ── Form tambah move baru ──
+        st.markdown("**Tambah Perpindahan Baru:**")
+        pending = _pending_deltas(moves_list)
 
-        if not sumber_avail:
-            st.info("Semua baris RKAP sudah ditambahkan sebagai sumber.")
-        else:
+        col_src, col_dst = st.columns(2)
+        with col_src:
             sumber_sel_id = st.selectbox(
-                "Pilih baris RKAP sumber",
-                options=[r["id"] for r in sumber_avail],
-                format_func=lambda rid: _row_label(rkap_by_id[rid]),
+                "Sumber (Dari)",
+                options=[r["id"] for r in sorted_rows],
+                format_func=lambda rid: (
+                    _row_label(rkap_by_id[rid], show_sisa=False)
+                    + f"  |  efektif sisa: {format_rp(max(0, _eff_sisa(rid, pending)))}"
+                    if _eff_sisa(rid, pending) >= 0
+                    else _row_label(rkap_by_id[rid], show_sisa=False)
+                    + f"  |  efektif sisa: -{format_rp(abs(_eff_sisa(rid, pending)))}"
+                ),
                 key="rlk_sumber_sel",
             )
-
-            r_sel = rkap_by_id.get(sumber_sel_id, {})
-            rule_sel    = _get_rate(r_sel)
-            uang_harian = rule_sel["uang_harian"]
-            pesawat_pp  = rule_sel["plafon_pesawat"] * 2
-            hotel       = rule_sel["plafon_hotel"] * max(0, hari_per_token - 1)
-            nilai_per_token = uang_harian * hari_per_token + pesawat_pp + hotel
-            sisa_sel = r_sel.get("anggaran_sisa") or 0
-
-            min_hari = MIN_HARI_LOKASI.get(r_sel.get("lokasi_id", ""), 1)
-            min_tok = max(1, -(-min_hari // hari_per_token))
-            max_tok = max(min_tok, int(sisa_sel // nilai_per_token)) if nilai_per_token > 0 else min_tok
-
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                st.metric("Nilai/trip", format_rp(nilai_per_token))
-                st.caption(
-                    f"Harian: {format_rp(uang_harian)}/hari × {hari_per_token}  \n"
-                    f"Pesawat PP: {format_rp(pesawat_pp)}  \n"
-                    f"Hotel: {format_rp(rule_sel['plafon_hotel'])}/mlm × {max(0, hari_per_token - 1)}"
-                )
-            with col_f2:
-                jumlah_token = st.number_input(
-                    f"Jumlah trip (min {min_tok}, maks {max_tok})",
-                    min_value=min_tok, max_value=max(min_tok, max_tok),
-                    value=min_tok, step=1, key="rlk_token_input",
-                )
-            with col_f3:
-                jumlah_rp = int(jumlah_token * nilai_per_token)
-                sisa_after = sisa_sel - jumlah_rp
-                sisa_ok = sisa_after >= 0
-                st.metric("Rupiah dipindah", format_rp(jumlah_rp))
-                if sisa_ok:
-                    st.caption(f"Sisa setelah: {format_rp(int(sisa_after))} ✓")
-                else:
-                    st.caption(f"Sisa setelah: {format_rp(int(sisa_after))} — tidak cukup")
-
-            if st.button(
-                "+ Tambah ke Daftar Sumber",
-                disabled=(not sisa_ok or nilai_per_token == 0),
-                key="rlk_tambah_sumber",
-            ):
-                if nilai_per_token == 0:
-                    st.error("Rate tidak ditemukan untuk kategori ini.")
-                else:
-                    st.session_state.rlk_sumber_list.append({
-                        "dari_rkap_id": sumber_sel_id,
-                        "jumlah_token": int(jumlah_token),
-                        "hari_per_token": int(hari_per_token),
-                        "rate_per_hari": int(uang_harian),
-                        "jumlah": jumlah_rp,
-                    })
-                    st.session_state.rlk_show_preview = False
-                    st.rerun()
-
-        # Bagian tujuan — hanya tampil jika ada sumber
-        if not sumber_list:
-            st.info("Tambahkan minimal 1 sumber anggaran untuk melanjutkan.")
-        else:
-            st.divider()
-            st.markdown("**Tujuan Anggaran:**")
-
-            tujuan_avail = [r for r in sorted_rows if r["id"] not in sumber_ids_already]
+        with col_dst:
+            tujuan_avail = [r for r in sorted_rows if r["id"] != sumber_sel_id]
             tujuan_sel_id = st.selectbox(
-                "Pilih baris RKAP tujuan",
+                "Tujuan (Ke)",
                 options=[r["id"] for r in tujuan_avail],
-                format_func=lambda rid: _row_label(rkap_by_id[rid]),
+                format_func=lambda rid: _row_label(rkap_by_id[rid], show_sisa=False),
                 key="rlk_tujuan_sel",
             )
 
-            r_tujuan = rkap_by_id.get(tujuan_sel_id, {})
-            total_pindah = sum(x["jumlah"] for x in sumber_list)
-            sisa_tujuan = r_tujuan.get("anggaran_sisa") or 0
+        r_sel = rkap_by_id.get(sumber_sel_id, {})
+        rule_sel    = _get_rate(r_sel)
+        uang_harian = rule_sel["uang_harian"]
+        min_hari    = MIN_HARI_LOKASI.get(r_sel.get("lokasi_id", ""), 1)
+        eff_sisa_src = _eff_sisa(sumber_sel_id, pending)
 
-            col_t1, col_t2, col_t3 = st.columns(3)
-            with col_t1:
-                st.metric("Total dipindahkan", format_rp(total_pindah))
-            with col_t2:
-                st.metric("Sisa tujuan sekarang", format_rp(sisa_tujuan))
-            with col_t3:
-                st.metric("Sisa tujuan setelah", format_rp(sisa_tujuan + total_pindah))
+        col_h, col_t, col_info = st.columns(3)
+        with col_h:
+            hari_per_token = st.number_input(
+                f"Hari/trip (min {min_hari})",
+                min_value=min_hari, max_value=30,
+                value=max(min_hari, 4), step=1,
+                key="rlk_hari_per_token",
+            )
+        pesawat_pp      = rule_sel["plafon_pesawat"] * 2
+        hotel_per_trip  = rule_sel["plafon_hotel"] * max(0, hari_per_token - 1)
+        nilai_per_token = uang_harian * hari_per_token + pesawat_pp + hotel_per_trip
+        max_tok = max(1, int(eff_sisa_src // nilai_per_token)) if nilai_per_token > 0 else 1
 
+        with col_t:
+            jumlah_token = st.number_input(
+                f"Jumlah trip (maks {max_tok})",
+                min_value=1, max_value=max(1, max_tok),
+                value=1, step=1,
+                key="rlk_token_input",
+            )
+        jumlah_rp    = int(jumlah_token * nilai_per_token)
+        sisa_after   = eff_sisa_src - jumlah_rp
+        sisa_ok      = sisa_after >= 0 and nilai_per_token > 0
+
+        with col_info:
+            st.metric("Nilai/trip", format_rp(nilai_per_token))
+            st.caption(
+                f"Harian: {format_rp(uang_harian)}/hr × {hari_per_token}  \n"
+                f"Pesawat PP: {format_rp(pesawat_pp)}  \n"
+                f"Hotel: {format_rp(rule_sel['plafon_hotel'])}/mlm × {max(0, hari_per_token-1)}"
+            )
+
+        col_rp, col_btn = st.columns([3, 2])
+        with col_rp:
+            st.metric("Rupiah dipindah", format_rp(jumlah_rp))
+            if sisa_ok:
+                st.caption(f"Sisa sumber setelah: {format_rp(int(sisa_after))} ✓")
+            elif nilai_per_token == 0:
+                st.caption("Rate tidak ditemukan untuk kategori ini")
+            else:
+                st.caption(f"Sisa sumber tidak cukup ({format_rp(int(eff_sisa_src))} < {format_rp(jumlah_rp)})")
+        with col_btn:
+            st.write("")
+            if st.button("+ Tambah ke Daftar", disabled=not sisa_ok, key="rlk_tambah_btn", use_container_width=True):
+                st.session_state.rlk_moves_list.append({
+                    "dari_rkap_id": sumber_sel_id,
+                    "ke_rkap_id":   tujuan_sel_id,
+                    "jumlah_token": int(jumlah_token),
+                    "hari_per_token": int(hari_per_token),
+                    "rate_per_hari": int(uang_harian),
+                    "jumlah": jumlah_rp,
+                })
+                st.session_state.rlk_show_preview = False
+                st.rerun()
+
+        # ── Keterangan + tombol aksi ──
+        if moves_list:
+            st.divider()
             keterangan = st.text_input(
-                "Keterangan realokasi",
-                placeholder="Contoh: Penyesuaian anggaran Q1 – sisa Staf Mar → Dirut Jan",
+                "Keterangan batch realokasi ini",
+                placeholder="Contoh: Realokasi Dewas semester 1 → semester 2",
                 key="rlk_keterangan",
             )
 
             col_btn1, col_btn2 = st.columns([2, 1])
             with col_btn1:
-                if st.button("🔍 Lihat Preview Realokasi", type="primary"):
+                if st.button("🔍 Preview & Konfirmasi", type="primary", key="rlk_preview_btn"):
                     st.session_state.rlk_show_preview = True
             with col_btn2:
-                if st.button("🗑️ Reset Semua", type="secondary"):
-                    st.session_state.rlk_sumber_list = []
+                if st.button("🗑️ Reset Semua", type="secondary", key="rlk_reset_btn"):
+                    st.session_state.rlk_moves_list = []
                     st.session_state.rlk_show_preview = False
                     st.rerun()
 
@@ -860,50 +892,120 @@ def main():
                 st.divider()
                 st.markdown("#### Preview Realokasi")
 
-                preview_rows = []
-                for item in sumber_list:
-                    r_s = rkap_by_id.get(item["dari_rkap_id"], {})
-                    sisa_s_before = r_s.get("anggaran_sisa") or 0
-                    preview_rows.append({
-                        "Dari": _row_label(r_s, show_sisa=False) if r_s else item["dari_rkap_id"][:8],
-                        "Trip": item["jumlah_token"],
-                        "Hari/Trip": item["hari_per_token"],
-                        "Rate/Hari": format_rp(item["rate_per_hari"]),
-                        "Rupiah Pindah": format_rp(item["jumlah"]),
-                        "Sisa Sumber Setelah": format_rp(sisa_s_before - item["jumlah"]),
+                # Tabel daftar moves
+                prev_rows = []
+                for move in moves_list:
+                    r_d = rkap_by_id.get(move["dari_rkap_id"], {})
+                    r_k = rkap_by_id.get(move["ke_rkap_id"], {})
+                    nilai_trip = move["jumlah"] // move["jumlah_token"] if move["jumlah_token"] else 0
+                    prev_rows.append({
+                        "Dari":        _row_label(r_d, show_sisa=False) if r_d else move["dari_rkap_id"][:8],
+                        "Ke":          _row_label(r_k, show_sisa=False) if r_k else move["ke_rkap_id"][:8],
+                        "Trip":        move["jumlah_token"],
+                        "Hari/Trip":   move["hari_per_token"],
+                        "Nilai/Trip":  format_rp(nilai_trip),
+                        "Total Pindah": format_rp(move["jumlah"]),
                     })
-                st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
-                tujuan_str = _row_label(r_tujuan, show_sisa=False) if r_tujuan else tujuan_sel_id[:8]
-                st.info(
-                    f"**Tujuan:** {tujuan_str}  \n"
-                    f"Sisa sekarang **{format_rp(sisa_tujuan)}** "
-                    f"→ setelah realokasi **{format_rp(sisa_tujuan + total_pindah)}**  \n"
-                    f"**Total dipindah:** {format_rp(total_pindah)}  \n"
-                    f"**Keterangan:** {keterangan or '(kosong)'}"
-                )
+                total_pindah = sum(m["jumlah"] for m in moves_list)
+                st.caption(f"**Total semua perpindahan: {format_rp(total_pindah)}**  |  Keterangan: {keterangan or '(kosong)'}")
 
+                # ── Pivot sebelum/sesudah per kategori+lokasi per bulan ──
+                st.divider()
+                st.markdown("#### Dampak ke Anggaran per Bulan")
+
+                BULAN_SHORT = {
+                    1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"Mei",6:"Jun",
+                    7:"Jul",8:"Agu",9:"Sep",10:"Okt",11:"Nov",12:"Des"
+                }
+
+                # Temukan kombinasi kategori+lokasi yang terdampak
+                affected_delta = _pending_deltas(moves_list)
+                affected_combos = set()
+                for rid in affected_delta:
+                    r = rkap_by_id.get(rid, {})
+                    affected_combos.add((r.get("kategori_jabatan",""), r.get("lokasi_id","")))
+
+                # Kumpulkan semua 12 bulan untuk setiap combo yang terdampak
+                combo_before = {}  # (kat,lok) → {bulan: anggaran_awal}
+                combo_after  = {}
+                for r in sorted_rows:
+                    kat = r.get("kategori_jabatan","")
+                    lok = r.get("lokasi_id","")
+                    if (kat, lok) not in affected_combos:
+                        continue
+                    bln = r.get("bulan", 0)
+                    key = (kat, lok)
+                    if key not in combo_before:
+                        combo_before[key] = {}
+                        combo_after[key]  = {}
+                    aa = r.get("anggaran_awal", 0)
+                    delta = affected_delta.get(r["id"], 0)
+                    combo_before[key][bln] = aa
+                    combo_after[key][bln]  = aa + delta
+
+                # Sort sesuai urutan kategori
+                def _sort_key(key_tuple):
+                    kat, lok = key_tuple
+                    return (
+                        KATEGORI_ORDER.index(kat) if kat in KATEGORI_ORDER else 99,
+                        LOKASI_ID_ORDER.index(lok) if lok in LOKASI_ID_ORDER else 9,
+                    )
+
+                def _build_pivot(combo_data):
+                    rows = []
+                    for key in sorted(combo_data.keys(), key=_sort_key):
+                        kat, lok = key
+                        row = {
+                            "Kategori": KATEGORI_DISPLAY.get(kat, kat),
+                            "Lokasi":   LOKASI_LABEL.get(lok, lok),
+                        }
+                        for m in range(1, 13):
+                            row[BULAN_SHORT[m]] = combo_data[key].get(m, 0)
+                        rows.append(row)
+                    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+                df_before = _build_pivot(combo_before)
+                df_after  = _build_pivot(combo_after)
+
+                st.markdown("**Anggaran Sebelum Realokasi (Rp)**")
+                st.dataframe(df_before, use_container_width=True, hide_index=True)
+
+                st.markdown("**Anggaran Sesudah Realokasi (Rp)**")
+                st.dataframe(df_after, use_container_width=True, hide_index=True)
+
+                st.divider()
                 col_ok, col_cancel = st.columns([3, 1])
                 with col_ok:
-                    if st.button("✅ Konfirmasi & Simpan Realokasi", type="primary", use_container_width=True):
-                        ok, err = eksekusi_realokasi(
-                            ke_rkap_id=tujuan_sel_id,
-                            sumber_items=sumber_list,
+                    if st.button("✅ Konfirmasi & Simpan Realokasi", type="primary", use_container_width=True, key="rlk_konfirmasi"):
+                        ok, err = eksekusi_realokasi_multi(
+                            moves=moves_list,
                             keterangan=keterangan,
                             tanggal=str(_date.today()),
                         )
                         if ok:
-                            st.success(f"Realokasi berhasil! {format_rp(total_pindah)} dipindahkan ke {tujuan_str}.")
-                            st.session_state.rlk_sumber_list = []
+                            st.session_state.rlk_last_success = (
+                                f"Realokasi berhasil! {len(moves_list)} perpindahan, "
+                                f"total {format_rp(total_pindah)} direlokasi."
+                            )
+                            st.session_state.rlk_moves_list   = []
                             st.session_state.rlk_show_preview = False
                             load_rkap.clear()
                             st.rerun()
                         else:
                             st.error(f"Gagal: {err}")
                 with col_cancel:
-                    if st.button("Batal", type="secondary", use_container_width=True):
+                    if st.button("Batal", type="secondary", use_container_width=True, key="rlk_batal"):
                         st.session_state.rlk_show_preview = False
                         st.rerun()
+
+        # ── Notifikasi sukses ──
+        if st.session_state.rlk_last_success:
+            st.success(st.session_state.rlk_last_success)
+            if st.button("✓ Tutup notifikasi", key="rlk_tutup_notif"):
+                st.session_state.rlk_last_success = None
+                st.rerun()
 
 
 # ─────────────────────────────────────────────
