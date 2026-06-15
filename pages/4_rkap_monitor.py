@@ -5,7 +5,9 @@ import plotly.graph_objects as go
 from utils.database import (
     get_client,
     get_all_rule_rates, get_rkap_rows_tahun, get_realokasi_history,
-    eksekusi_realokasi, eksekusi_realokasi_multi, MIN_HARI_LOKASI, KATEGORI_TO_RULE_JABATAN,
+    eksekusi_realokasi, eksekusi_realokasi_multi,
+    simpan_draft_realokasi, get_draft_list_realokasi, hapus_draft_realokasi,
+    MIN_HARI_LOKASI, KATEGORI_TO_RULE_JABATAN,
 )
 from datetime import date as _date
 from collections import OrderedDict
@@ -540,7 +542,9 @@ def main():
         if "rlk_show_preview" not in st.session_state:
             st.session_state.rlk_show_preview = False
         if "rlk_last_success" not in st.session_state:
-            st.session_state.rlk_last_success = None  # pesan sukses terakhir
+            st.session_state.rlk_last_success = None
+        if "rlk_active_draft_id" not in st.session_state:
+            st.session_state.rlk_active_draft_id = None  # id draft yang sedang dimuat
 
         # ── Load history (dipakai di ringkasan & riwayat) ─────────────────────
         history = get_realokasi_history(tahun)
@@ -742,6 +746,34 @@ def main():
         st.divider()
         st.markdown("### Buat Realokasi Baru")
 
+        # ── Panel Draft ────────────────────────────────────────────────────────
+        draft_list = get_draft_list_realokasi(tahun)
+        if draft_list:
+            with st.expander(f"📂 Draft Tersimpan ({len(draft_list)})", expanded=False):
+                for draft in draft_list:
+                    tgl_upd = (draft.get("updated_at") or "")[:10]
+                    n_moves = len(draft.get("moves") or [])
+                    col_info, col_muat, col_hapus = st.columns([5, 1, 1])
+                    with col_info:
+                        st.write(f"**{draft['nama']}** — {n_moves} move — diperbarui {tgl_upd}")
+                        if draft.get("keterangan"):
+                            st.caption(draft["keterangan"])
+                    with col_muat:
+                        if st.button("Muat", key=f"rlk_muat_{draft['id']}"):
+                            import json as _json
+                            raw = draft.get("moves") or []
+                            loaded = _json.loads(raw) if isinstance(raw, str) else raw
+                            st.session_state.rlk_moves_list    = loaded
+                            st.session_state.rlk_show_preview  = False
+                            st.session_state.rlk_active_draft_id = draft["id"]
+                            st.rerun()
+                    with col_hapus:
+                        if st.button("Hapus", key=f"rlk_hapus_{draft['id']}"):
+                            hapus_draft_realokasi(draft["id"])
+                            if st.session_state.rlk_active_draft_id == draft["id"]:
+                                st.session_state.rlk_active_draft_id = None
+                            st.rerun()
+
         moves_list = st.session_state.rlk_moves_list
 
         # ── Helper: net delta dari moves yang sudah diqueue ──
@@ -877,21 +909,59 @@ def main():
         # ── Keterangan + tombol aksi ──
         if moves_list:
             st.divider()
-            keterangan = st.text_input(
-                "Keterangan batch realokasi ini",
-                placeholder="Contoh: Realokasi Dewas semester 1 → semester 2",
-                key="rlk_keterangan",
-            )
 
-            col_btn1, col_btn2 = st.columns([2, 1])
-            with col_btn1:
-                if st.button("🔍 Preview & Konfirmasi", type="primary", key="rlk_preview_btn"):
+            # Info draft aktif
+            if st.session_state.rlk_active_draft_id:
+                active = next((d for d in draft_list if d["id"] == st.session_state.rlk_active_draft_id), None)
+                if active:
+                    st.info(f"📂 Draft aktif: **{active['nama']}** ({len(moves_list)} move)")
+
+            col_ket, col_nama = st.columns([3, 2])
+            with col_ket:
+                keterangan = st.text_input(
+                    "Keterangan batch",
+                    placeholder="Contoh: Realokasi Dewas semester 1 → semester 2",
+                    key="rlk_keterangan",
+                )
+            with col_nama:
+                nama_draft = st.text_input(
+                    "Nama draft (untuk simpan)",
+                    placeholder="Contoh: Realokasi Dewas 2026",
+                    key="rlk_nama_draft",
+                )
+
+            col_b1, col_b2, col_b3, col_b4 = st.columns([3, 2, 2, 1])
+            with col_b1:
+                if st.button("🔍 Preview & Finalisasi", type="primary", key="rlk_preview_btn"):
                     st.session_state.rlk_show_preview = True
-            with col_btn2:
+            with col_b2:
+                if st.button("💾 Simpan Draft", key="rlk_simpan_draft_btn"):
+                    if not nama_draft.strip():
+                        st.warning("Isi nama draft terlebih dahulu.")
+                    else:
+                        ok, err = simpan_draft_realokasi(
+                            nama=nama_draft.strip(),
+                            tahun=tahun,
+                            keterangan=keterangan,
+                            moves=moves_list,
+                        )
+                        if ok:
+                            # Update active draft id
+                            updated = get_draft_list_realokasi(tahun)
+                            found = next((d for d in updated if d["nama"] == nama_draft.strip()), None)
+                            st.session_state.rlk_active_draft_id = found["id"] if found else None
+                            st.success(f"Draft '{nama_draft.strip()}' tersimpan ({len(moves_list)} move).")
+                            st.rerun()
+                        else:
+                            st.error(f"Gagal simpan draft: {err}")
+            with col_b3:
                 if st.button("🗑️ Reset Semua", type="secondary", key="rlk_reset_btn"):
                     st.session_state.rlk_moves_list = []
                     st.session_state.rlk_show_preview = False
+                    st.session_state.rlk_active_draft_id = None
                     st.rerun()
+            with col_b4:
+                st.write("")  # spacer
 
             # ── Preview ──
             if st.session_state.rlk_show_preview:
@@ -1075,6 +1145,10 @@ def main():
                             tanggal=str(_date.today()),
                         )
                         if ok:
+                            # Auto-hapus draft aktif setelah finalisasi
+                            if st.session_state.rlk_active_draft_id:
+                                hapus_draft_realokasi(st.session_state.rlk_active_draft_id)
+                                st.session_state.rlk_active_draft_id = None
                             st.session_state.rlk_last_success = (
                                 f"Realokasi berhasil! {len(moves_list)} perpindahan, "
                                 f"total {format_rp(total_pindah)} direlokasi."

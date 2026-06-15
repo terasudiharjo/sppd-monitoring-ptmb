@@ -419,6 +419,56 @@ def eksekusi_realokasi(
     return True, ""
 
 
+# ─── DRAFT REALOKASI ───────────────────────────────────────────────────────────
+
+def simpan_draft_realokasi(nama: str, tahun: int, keterangan: str, moves: list) -> tuple:
+    """Simpan atau update draft realokasi. Upsert by nama+tahun."""
+    import json as _json
+    db = get_client()
+    existing = db.table("rkap_realokasi_draft")\
+        .select("id")\
+        .eq("nama", nama).eq("tahun", tahun)\
+        .execute()
+    payload = {
+        "nama": nama,
+        "tahun": tahun,
+        "keterangan": keterangan,
+        "moves": _json.dumps(moves),
+        "updated_at": "now()",
+    }
+    try:
+        if existing.data:
+            db.table("rkap_realokasi_draft")\
+                .update(payload)\
+                .eq("id", existing.data[0]["id"]).execute()
+        else:
+            db.table("rkap_realokasi_draft").insert(payload).execute()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def get_draft_list_realokasi(tahun: int) -> list:
+    """Semua draft untuk tahun ini, urut terbaru dulu."""
+    db = get_client()
+    res = db.table("rkap_realokasi_draft")\
+        .select("id, nama, keterangan, moves, updated_at")\
+        .eq("tahun", tahun)\
+        .order("updated_at", desc=True)\
+        .execute()
+    return res.data or []
+
+
+def hapus_draft_realokasi(draft_id: str) -> tuple:
+    """Hapus satu draft by id."""
+    db = get_client()
+    try:
+        db.table("rkap_realokasi_draft").delete().eq("id", draft_id).execute()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
 def eksekusi_realokasi_multi(
     moves: list,
     keterangan: str,
