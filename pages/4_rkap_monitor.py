@@ -1045,7 +1045,7 @@ def main():
                             "Lokasi":   LOKASI_LABEL.get(lok, lok),
                         }
                         for m in range(1, 13):
-                            row[BULAN_SHORT[m]] = combo_data[key].get(m, 0)
+                            row[BULAN_SHORT[m]] = format_rp(combo_data[key].get(m, 0))
                         rows.append(row)
                     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
@@ -1106,8 +1106,8 @@ def main():
                     for p_label, bulan_list in periode_groups.items():
                         sbl   = sum(combo_before[key].get(m, 0) for m in bulan_list)
                         ssd   = sum(combo_after[key].get(m, 0)  for m in bulan_list)
-                        row[f"{p_label} Sbl"] = sbl
-                        row[f"{p_label} Ssd"] = ssd
+                        row[f"{p_label} Sbl"] = format_rp(sbl)
+                        row[f"{p_label} Ssd"] = format_rp(ssd)
                         row[f"{p_label} ∆"]   = _delta_str(ssd - sbl)
                     comp_rows.append(row)
 
