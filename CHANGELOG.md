@@ -22,7 +22,7 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 3. Script baru untuk audit RKAP Dewas: cek `struktur_rkap` jabatan, cek baris RKAP kategori DEWAS*, dan trace ke mana setiap SPPD Dewas aktif ter-deduct. Berguna untuk deteksi mismatched `lokasi_id` vs `rkap_id`.
 
 **UI minor: Dropdown Realokasi RKAP (`pages/4_rkap_monitor.py`):**
-4. Urutan dropdown Sumber & Tujuan diubah: sekarang sort **Lokasi** (Dalam Kaltim → Luar Kaltim → Luar Negeri) → **Bulan** (Jan–Des) → Kategori. Sebelumnya urutan kategori dulu baru lokasi.
+4. Urutan dropdown Sumber & Tujuan: **Kategori** (Dewas → Dirut → Direksi → Manajer → Supervisor → Staf) → **Lokasi** (Dalam → Luar → LN) → **Bulan** (Jan–Des).
 5. Baris RKAP dengan efektif sisa negatif kini ditandai prefix `🔴` di dropdown (Streamlit tidak support warna teks di selectbox, pakai emoji sebagai penanda visual).
 
 ---

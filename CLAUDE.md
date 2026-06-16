@@ -155,7 +155,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 - **Fix bug `update_tujuan_visum`** (`utils/database.py`): saat tujuan visum berubah lokasi (misal Luar→Dalam Kaltim), SPPD berstatus `draft` tidak di-update `rkap_id`-nya — hanya `lokasi_id` dan uang saku yang berubah. Akibatnya saat pencairan deduct ke bucket lokasi lama. Fix: branch `elif sppd["status"] == "draft"` ditambah untuk update pointer `rkap_id` ke lokasi baru (tanpa rollback/deduct karena draft belum deduct).
 - **Script diagnostik `check/cek_dewas_rkap.py`**: audit `struktur_rkap` jabatan DEWAS, cek baris RKAP kategori DEWAS*, dan trace ke mana tiap SPPD Dewas aktif ter-deduct. Berguna deteksi mismatch `lokasi_id` vs `rkap_id`.
 - **Script fix data `check/fix_dewas_rkap_visum0055.py`**: koreksi 3 SPPD Dewas (Ketua/1/2) Visum 0055 Samarinda yang salah deduct ke Luar Kaltim. DRY_RUN=True → preview dulu, False → eksekusi. **✅ Sudah dijalankan** — Script dikembalikan ke DRY_RUN=True.
-- **UI minor dropdown Realokasi RKAP** (`pages/4_rkap_monitor.py`): urutan dropdown Sumber & Tujuan diubah ke Lokasi (Dalam→Luar→LN) → Bulan (Jan–Des) → Kategori. Baris dengan efektif sisa negatif ditandai prefix `🔴` di dropdown.
+- **UI minor dropdown Realokasi RKAP** (`pages/4_rkap_monitor.py`): urutan dropdown Sumber & Tujuan: Kategori (Dewas→Dirut→Direksi→dst) → Lokasi (Dalam→Luar→LN) → Bulan (Jan–Des). Baris dengan efektif sisa negatif ditandai prefix `🔴` di dropdown.
 
 ### ✅ Selesai sesi 2026-06-15:
 - **Realokasi RKAP multi-pasang** (`pages/4_rkap_monitor.py` + `utils/database.py`): satu batch sekarang bisa berisi banyak pasang (dari→ke) yang berbeda-beda tujuan. Fungsi baru `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — validasi aggregate per sumber, hitung net delta per rkap_id, satu `batch_id` bersama.
@@ -255,7 +255,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 
 **UI di `pages/4_rkap_monitor.py` Tab 4 "Realokasi RKAP":**
 - Panel "📂 Draft Tersimpan" — muat/hapus draft yang sudah disimpan
-- Form tambah move: pilih Sumber + Tujuan (urut Lokasi→Bulan→Kategori; prefix `🔴` jika sisa negatif), hari/trip, jumlah trip → "+ Tambah ke Daftar"
+- Form tambah move: pilih Sumber + Tujuan (urut Kategori→Lokasi→Bulan; prefix `🔴` jika sisa negatif), hari/trip, jumlah trip → "+ Tambah ke Daftar"
 - Daftar moves ter-queue ditampilkan dengan tombol ✕ per baris
 - Tombol "💾 Simpan Draft" (isi nama draft dulu) → tersimpan di Supabase, bisa dilanjutkan lain waktu
 - Tombol "🔍 Preview & Finalisasi" → tampilkan: tabel moves, pivot Jan–Des sebelum/sesudah, perbandingan per TW/Semester (anggaran + sisa, ikon 🟢/🔴/🚨)

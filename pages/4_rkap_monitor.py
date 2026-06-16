@@ -531,9 +531,9 @@ def main():
             return all_rates.get((rule_jab, r.get("lokasi_id", "")), _EMPTY_RULE)
 
         sorted_rows = sorted(all_rows, key=lambda r: (
+            KATEGORI_ORDER.index(r["kategori_jabatan"]) if r["kategori_jabatan"] in KATEGORI_ORDER else 99,
             LOKASI_ID_ORDER.index(r["lokasi_id"]) if r["lokasi_id"] in LOKASI_ID_ORDER else 9,
             r["bulan"],
-            KATEGORI_ORDER.index(r["kategori_jabatan"]) if r["kategori_jabatan"] in KATEGORI_ORDER else 99,
         ))
 
         # ── Session state ──
