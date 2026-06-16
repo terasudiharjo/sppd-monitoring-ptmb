@@ -4,6 +4,25 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-16
+
+**Investigasi & Fix: RKAP Dewas Dalam Kaltim tidak ter-deduct (Visum 0055)**
+
+**Root cause:** Bug di `update_tujuan_visum()` (`utils/database.py`) — ketika tujuan visum diubah (lokasi berubah) saat SPPD masih berstatus `draft`, fungsi ini hanya memperbarui `sppd.lokasi_id` dan uang saku, tapi **tidak memperbarui `sppd.rkap_id`**. Akibatnya `rkap_id` tetap mengarah ke lokasi lama. Saat pencairan, `3_sppd.py` hanya coba recover `rkap_id` kalau nilainya `NULL` — karena `rkap_id` sudah ada (meski salah), deduct langsung ke lokasi lama yang keliru.
+
+**Kasus konkret:** Visum 0055 (Samarinda, Dalam Kaltim). Awalnya tujuan kemungkinan kota Luar Kaltim → SPPD dibuat dengan `rkap_id → Luar Kaltim`. Tujuan diubah ke "Samarinda" saat draft → `lokasi_id` dan uang saku diperbarui ke Dalam Kaltim, tapi `rkap_id` tetap Luar Kaltim. Pencairan → deduct ke Luar Kaltim (SALAH). Akibatnya: RKAP Dalam Kaltim untuk semua DEWAS (Ketua/1/2) `terpakai=0` sepanjang tahun.
+
+**Fix kode (`utils/database.py`):**
+1. Perbaikan `update_tujuan_visum()`: branch baru untuk SPPD `draft` — `rkap_id` sekarang juga diperbarui ke lokasi baru (tanpa rollback/deduct karena draft belum deduct RKAP). Jika baris RKAP baru tidak ditemukan → `rkap_id = NULL` (akan di-recover saat pencairan oleh kode existing di `3_sppd.py`).
+
+**Script fix data (`check/fix_dewas_rkap_visum0055.py`):**
+2. Script satu kali untuk koreksi 3 SPPD Dewas Visum 0055: rollback dari Luar Kaltim → deduct ke Dalam Kaltim Mei 2026 → update `sppd.rkap_id`. Total: Rp 26.110.000 dipindah (Rita Rp 6.225.000, Supriadi Rp 8.575.000, Agus Rp 11.310.000). **✅ Sudah dijalankan** — Script dikembalikan ke DRY_RUN=True.
+
+**Script diagnostik (`check/cek_dewas_rkap.py`):**
+3. Script baru untuk audit RKAP Dewas: cek `struktur_rkap` jabatan, cek baris RKAP kategori DEWAS*, dan trace ke mana setiap SPPD Dewas aktif ter-deduct. Berguna untuk deteksi mismatched `lokasi_id` vs `rkap_id`.
+
+---
+
 ## Sesi 2026-05-29
 
 **Script Fix Data:**

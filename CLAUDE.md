@@ -151,6 +151,11 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-06-16:
+- **Fix bug `update_tujuan_visum`** (`utils/database.py`): saat tujuan visum berubah lokasi (misal Luar→Dalam Kaltim), SPPD berstatus `draft` tidak di-update `rkap_id`-nya — hanya `lokasi_id` dan uang saku yang berubah. Akibatnya saat pencairan deduct ke bucket lokasi lama. Fix: branch `elif sppd["status"] == "draft"` ditambah untuk update pointer `rkap_id` ke lokasi baru (tanpa rollback/deduct karena draft belum deduct).
+- **Script diagnostik `check/cek_dewas_rkap.py`**: audit `struktur_rkap` jabatan DEWAS, cek baris RKAP kategori DEWAS*, dan trace ke mana tiap SPPD Dewas aktif ter-deduct. Berguna deteksi mismatch `lokasi_id` vs `rkap_id`.
+- **Script fix data `check/fix_dewas_rkap_visum0055.py`**: koreksi 3 SPPD Dewas (Ketua/1/2) Visum 0055 Samarinda yang salah deduct ke Luar Kaltim. DRY_RUN=True → preview dulu, False → eksekusi. **✅ Sudah dijalankan** — Script dikembalikan ke DRY_RUN=True.
+
 ### ✅ Selesai sesi 2026-06-15:
 - **Realokasi RKAP multi-pasang** (`pages/4_rkap_monitor.py` + `utils/database.py`): satu batch sekarang bisa berisi banyak pasang (dari→ke) yang berbeda-beda tujuan. Fungsi baru `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — validasi aggregate per sumber, hitung net delta per rkap_id, satu `batch_id` bersama.
 - **UI Tab 4 revamp**: form tambah move baru pilih Sumber + Tujuan sekaligus (bukan multi-sumber → 1 tujuan); hari/trip bisa beda per move (default = MIN_HARI_LOKASI sumber); effective sisa di kedua selectbox sudah memperhitungkan moves yang sudah di-queue dalam batch yang sama.

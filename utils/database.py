@@ -1058,17 +1058,16 @@ def update_tujuan_visum(visum_id: str, tujuan_baru: str, keperluan_baru: str) ->
         rkap_id_lama = sppd.get("rkap_id")
         rkap_id_baru = rkap_id_lama
 
+        tgl_eff_str = sppd.get("tanggal_berangkat_custom") or visum["tanggal_berangkat"]
+        tgl_eff = date.fromisoformat(tgl_eff_str)
+        struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
+        bidang = pegawai.get("bidang_resolved", "") or ""
+        kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id_baru)
+        rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id_baru
+        rkap_id_cek = get_rkap_id(kategori, rkap_lokasi_id, tgl_eff.month, tgl_eff.year)
+
         if sppd["status"] in ("pencairan", "realisasi", "completed") and rkap_id_lama:
-            tgl_eff_str = sppd.get("tanggal_berangkat_custom") or visum["tanggal_berangkat"]
-            tgl_eff = date.fromisoformat(tgl_eff_str)
-
-            struktur = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
-            bidang = pegawai.get("bidang_resolved", "") or ""
-            kategori = resolve_kategori_rkap(struktur, bidang, lokasi_id_baru)
-            rkap_lokasi_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id_baru
-
-            rkap_id_cek = get_rkap_id(kategori, rkap_lokasi_id, tgl_eff.month, tgl_eff.year)
-
+            # SPPD sudah deduct RKAP → rollback lama, deduct ke lokasi baru
             rollback_rkap(rkap_id_lama, sppd.get("total_biaya") or 0)
 
             if rkap_id_cek:
@@ -1076,6 +1075,10 @@ def update_tujuan_visum(visum_id: str, tujuan_baru: str, keperluan_baru: str) ->
                 deduct_rkap(rkap_id_baru, total_biaya_baru)
             else:
                 rkap_id_baru = None
+        elif sppd["status"] == "draft":
+            # Draft belum deduct RKAP → cukup perbarui pointer rkap_id ke lokasi baru
+            # agar saat pencairan tidak salah bucket (bug: tanpa ini rkap_id lama ikut)
+            rkap_id_baru = rkap_id_cek  # bisa None jika baris belum ada; recover saat pencairan
 
         db.table("sppd").update({
             "lokasi_id":               lokasi_id_baru,
