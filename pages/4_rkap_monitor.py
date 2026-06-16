@@ -531,9 +531,9 @@ def main():
             return all_rates.get((rule_jab, r.get("lokasi_id", "")), _EMPTY_RULE)
 
         sorted_rows = sorted(all_rows, key=lambda r: (
-            KATEGORI_ORDER.index(r["kategori_jabatan"]) if r["kategori_jabatan"] in KATEGORI_ORDER else 99,
             LOKASI_ID_ORDER.index(r["lokasi_id"]) if r["lokasi_id"] in LOKASI_ID_ORDER else 9,
             r["bulan"],
+            KATEGORI_ORDER.index(r["kategori_jabatan"]) if r["kategori_jabatan"] in KATEGORI_ORDER else 99,
         ))
 
         # ── Session state ──
@@ -823,9 +823,9 @@ def main():
                 options=[r["id"] for r in sorted_rows],
                 format_func=lambda rid: (
                     _row_label(rkap_by_id[rid], show_sisa=False)
-                    + f"  |  efektif sisa: {format_rp(max(0, _eff_sisa(rid, pending)))}"
+                    + f"  |  efektif sisa: {format_rp(_eff_sisa(rid, pending))}"
                     if _eff_sisa(rid, pending) >= 0
-                    else _row_label(rkap_by_id[rid], show_sisa=False)
+                    else "🔴 " + _row_label(rkap_by_id[rid], show_sisa=False)
                     + f"  |  efektif sisa: -{format_rp(abs(_eff_sisa(rid, pending)))}"
                 ),
                 key="rlk_sumber_sel",
@@ -837,9 +837,9 @@ def main():
                 options=[r["id"] for r in tujuan_avail],
                 format_func=lambda rid: (
                     _row_label(rkap_by_id[rid], show_sisa=False)
-                    + f"  |  efektif sisa: {format_rp(max(0, _eff_sisa(rid, pending)))}"
+                    + f"  |  efektif sisa: {format_rp(_eff_sisa(rid, pending))}"
                     if _eff_sisa(rid, pending) >= 0
-                    else _row_label(rkap_by_id[rid], show_sisa=False)
+                    else "🔴 " + _row_label(rkap_by_id[rid], show_sisa=False)
                     + f"  |  efektif sisa: -{format_rp(abs(_eff_sisa(rid, pending)))}"
                 ),
                 key="rlk_tujuan_sel",
