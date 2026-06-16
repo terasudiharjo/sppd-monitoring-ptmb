@@ -25,6 +25,12 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 4. Urutan dropdown Sumber & Tujuan: **Kategori** (Dewas → Dirut → Direksi → Manajer → Supervisor → Staf) → **Lokasi** (Dalam → Luar → LN) → **Bulan** (Jan–Des).
 5. Baris RKAP dengan efektif sisa negatif kini ditandai prefix `🔴` di dropdown (Streamlit tidak support warna teks di selectbox, pakai emoji sebagai penanda visual).
 
+**Fitur: Mode Nominal Langsung untuk realokasi anggaran Bantuan (`pages/4_rkap_monitor.py`):**
+6. Khusus sumber/tujuan kategori `bantuan_sppd` atau `bantuan_sppd_luar_negeri`: muncul radio button **"Trip (estimasi Staf Pelaksana)"** vs **"Nominal Langsung"**.
+7. Mode Nominal: input satu field Rupiah langsung (step Rp 1 jt), validasi sisa cukup, tanpa perlu hitung trip. Berguna karena anggaran bantuan adalah angka bulat yang tidak bisa dibagi habis per trip.
+8. Mode ini juga membuka realokasi `bantuan_sppd_luar_negeri` yang sebelumnya disabled (rate luar negeri = 0, tombol tidak bisa diklik).
+9. Tampilan queue dan riwayat detail menyesuaikan: mode nominal tampil "nominal = Rp X", mode trip tetap tampil "N trip × M hr".
+
 ---
 
 ## Sesi 2026-05-29

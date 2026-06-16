@@ -156,6 +156,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 - **Script diagnostik `check/cek_dewas_rkap.py`**: audit `struktur_rkap` jabatan DEWAS, cek baris RKAP kategori DEWAS*, dan trace ke mana tiap SPPD Dewas aktif ter-deduct. Berguna deteksi mismatch `lokasi_id` vs `rkap_id`.
 - **Script fix data `check/fix_dewas_rkap_visum0055.py`**: koreksi 3 SPPD Dewas (Ketua/1/2) Visum 0055 Samarinda yang salah deduct ke Luar Kaltim. DRY_RUN=True → preview dulu, False → eksekusi. **✅ Sudah dijalankan** — Script dikembalikan ke DRY_RUN=True.
 - **UI minor dropdown Realokasi RKAP** (`pages/4_rkap_monitor.py`): urutan dropdown Sumber & Tujuan: Kategori (Dewas→Dirut→Direksi→dst) → Lokasi (Dalam→Luar→LN) → Bulan (Jan–Des). Baris dengan efektif sisa negatif ditandai prefix `🔴` di dropdown.
+- **Fitur Mode Nominal Langsung untuk Bantuan** (`pages/4_rkap_monitor.py`): jika sumber atau tujuan adalah `bantuan_sppd`/`bantuan_sppd_luar_negeri`, muncul radio button mode "Trip (estimasi Staf Pelaksana)" vs "Nominal Langsung". Mode nominal: input Rupiah langsung tanpa hitung trip — berguna karena anggaran bantuan angka bulat yang tidak bisa dibagi habis per trip. Juga membuka realokasi `bantuan_sppd_luar_negeri` yang sebelumnya disabled (rate LN = 0).
 
 ### ✅ Selesai sesi 2026-06-15:
 - **Realokasi RKAP multi-pasang** (`pages/4_rkap_monitor.py` + `utils/database.py`): satu batch sekarang bisa berisi banyak pasang (dari→ke) yang berbeda-beda tujuan. Fungsi baru `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — validasi aggregate per sumber, hitung net delta per rkap_id, satu `batch_id` bersama.
@@ -255,7 +256,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 
 **UI di `pages/4_rkap_monitor.py` Tab 4 "Realokasi RKAP":**
 - Panel "📂 Draft Tersimpan" — muat/hapus draft yang sudah disimpan
-- Form tambah move: pilih Sumber + Tujuan (urut Kategori→Lokasi→Bulan; prefix `🔴` jika sisa negatif), hari/trip, jumlah trip → "+ Tambah ke Daftar"
+- Form tambah move: pilih Sumber + Tujuan (urut Kategori→Lokasi→Bulan; prefix `🔴` jika sisa negatif), hari/trip, jumlah trip → "+ Tambah ke Daftar"; jika sumber/tujuan adalah kategori bantuan → radio "Trip (estimasi Staf Pelaksana)" | "Nominal Langsung"
 - Daftar moves ter-queue ditampilkan dengan tombol ✕ per baris
 - Tombol "💾 Simpan Draft" (isi nama draft dulu) → tersimpan di Supabase, bisa dilanjutkan lain waktu
 - Tombol "🔍 Preview & Finalisasi" → tampilkan: tabel moves, pivot Jan–Des sebelum/sesudah, perbandingan per TW/Semester (anggaran + sisa, ikon 🟢/🔴/🚨)
