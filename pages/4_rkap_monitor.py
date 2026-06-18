@@ -878,10 +878,16 @@ def main():
             input_mode = "Trip (hitung per trip)"
 
         if input_mode == "Trip (hitung per trip)":
-            # Gunakan rate TUJUAN — jumlah yang dipindah = cukup untuk N trip di tujuan
-            rule_sel    = _get_rate(r_dst)
+            rate_basis = st.radio(
+                "Basis rate trip:",
+                ["Tujuan", "Sumber"],
+                horizontal=True,
+                key="rlk_rate_basis",
+            )
+            r_rate     = r_dst if rate_basis == "Tujuan" else r_sel
+            rule_sel   = _get_rate(r_rate)
             uang_harian = rule_sel["uang_harian"]
-            min_hari    = MIN_HARI_LOKASI.get(r_dst.get("lokasi_id", ""), 1)
+            min_hari    = MIN_HARI_LOKASI.get(r_rate.get("lokasi_id", ""), 1)
 
             col_h, col_t, col_info = st.columns(3)
             with col_h:
@@ -910,7 +916,7 @@ def main():
             with col_info:
                 st.metric("Nilai/trip", format_rp(nilai_per_token))
                 st.caption(
-                    f"Rate dari: **Tujuan**  \n"
+                    f"Rate dari: **{rate_basis}**  \n"
                     f"Harian: {format_rp(uang_harian)}/hr × {hari_per_token}  \n"
                     f"Pesawat PP: {format_rp(pesawat_pp)}  \n"
                     f"Hotel: {format_rp(rule_sel['plafon_hotel'])}/mlm × {max(0, hari_per_token-1)}"
@@ -1050,8 +1056,27 @@ def main():
                     )
 
                 if add_mode == "Trip":
-                    rule_add     = _get_rate(r_add_dst)
-                    min_hari_add = MIN_HARI_LOKASI.get(r_add_dst.get("lokasi_id", ""), 1)
+                    add_rate_basis = st.radio(
+                        "Basis rate trip:",
+                        ["Tujuan", "Sumber"],
+                        horizontal=True,
+                        key="rlk_pool_add_rate_basis",
+                    )
+                    if add_rate_basis == "Sumber" and pool_sumber_ids:
+                        rate_src_id = st.selectbox(
+                            "Pakai rate sumber mana:",
+                            options=pool_sumber_ids,
+                            format_func=lambda rid: _row_label(rkap_by_id[rid], show_sisa=False),
+                            key="rlk_pool_add_rate_src",
+                        )
+                        r_add_rate = rkap_by_id.get(rate_src_id, {})
+                    elif add_rate_basis == "Sumber":
+                        st.caption("Pilih sumber di Step 1 terlebih dahulu.")
+                        r_add_rate = r_add_dst
+                    else:
+                        r_add_rate = r_add_dst
+                    rule_add     = _get_rate(r_add_rate)
+                    min_hari_add = MIN_HARI_LOKASI.get(r_add_rate.get("lokasi_id", ""), 1)
                     add_harian   = rule_add["uang_harian"]
 
                     col_ah, col_at, col_ainfo = st.columns(3)
@@ -1077,6 +1102,7 @@ def main():
                         st.metric("Nilai/trip", format_rp(add_nilai_trip) if add_nilai_trip else "—")
                         if add_nilai_trip:
                             st.caption(
+                                f"Rate dari: **{add_rate_basis}**  \n"
                                 f"Harian: {format_rp(add_harian)}/hr × {add_hari}  \n"
                                 f"Pesawat PP: {format_rp(add_pesawat_pp)}  \n"
                                 f"Hotel: {format_rp(rule_add['plafon_hotel'])}/mlm × {max(0, add_hari-1)}"
