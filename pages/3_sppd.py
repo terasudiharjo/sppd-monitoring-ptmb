@@ -584,6 +584,27 @@ with tab2:
 
                 if s["status"] == "completed":
                     st.success("✅ SPPD ini sudah COMPLETED.")
+                    st.divider()
+                    with st.expander("⚠️ Cancel SPPD Completed (koreksi data)"):
+                        st.warning(
+                            "**Perhatian:** Membatalkan SPPD yang sudah completed akan "
+                            "me-rollback seluruh `total_biaya` ke RKAP (termasuk transport, hotel, biaya lain)."
+                        )
+                        konfirmasi_cancel = st.checkbox(
+                            f"Saya yakin ingin cancel SPPD ini (total rollback: {format_rupiah(s.get('total_biaya') or 0)})",
+                            key=f"konfirmasi_cancel_{s['id']}"
+                        )
+                        if konfirmasi_cancel:
+                            if st.button("❌ Cancel SPPD", use_container_width=True, key=f"btn_cancel_completed_{s['id']}"):
+                                rkap_id_cancel = s.get("rkap_id")
+                                total_biaya_cancel = s.get("total_biaya") or 0
+                                if rkap_id_cancel and total_biaya_cancel > 0:
+                                    rollback_rkap(rkap_id_cancel, total_biaya_cancel)
+                                db.table("sppd").update({"status": "cancelled"}).eq("id", s["id"]).execute()
+                                if s.get("spd_id"):
+                                    update_rekap_spd(s["spd_id"])
+                                st.success("✅ SPPD berhasil di-cancel. RKAP sudah di-rollback.")
+                                st.rerun()
                 elif s["status"] == "cancelled":
                     st.error("❌ SPPD ini sudah CANCELLED.")
                 else:

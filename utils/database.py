@@ -1130,6 +1130,122 @@ def auto_buat_semua_sppd(visum: dict, lokasi_id: str, spd_id: str) -> list:
     return results
 
 
+def update_tanggal_visum(visum_id: str, tgl_visum: date, tgl_berangkat: date, tgl_kembali: date) -> dict:
+    """
+    Update tanggal visum + propagate ke semua SPPD yang tidak punya tanggal custom per orang.
+    - SPPD dengan tanggal_berangkat_custom tetap dilewati (custom per orang tidak dioverride)
+    - Hitung ulang total_hari + uang saku dari rule SPPD
+    - Adjust RKAP untuk status pencairan/realisasi/completed:
+      rollback total_biaya lama → deduct total_biaya baru (pindah rkap_id jika bulan berubah)
+    Return: {"success": bool, "pesan": str, "n_updated": int, "n_skip": int, "detail": [...]}
+    """
+    db = get_client()
+    lama_hari = (tgl_kembali - tgl_berangkat).days + 1
+
+    db.table("visum").update({
+        "tanggal_visum":     str(tgl_visum),
+        "tanggal_berangkat": str(tgl_berangkat),
+        "tanggal_kembali":   str(tgl_kembali),
+        "lama_hari":         lama_hari,
+    }).eq("id", visum_id).execute()
+
+    res_sppd = db.table("sppd").select(
+        "id, status, pegawai_id, lokasi_id, total_hari, "
+        "subtotal_uang_saku, total_biaya, rkap_id, spd_id, "
+        "tanggal_berangkat_custom, tanpa_uang_saku"
+    ).eq("visum_id", visum_id).neq("status", "cancelled").execute()
+
+    if not res_sppd.data:
+        return {"success": True, "pesan": "Tanggal visum diperbarui.", "n_updated": 0, "n_skip": 0, "detail": []}
+
+    spd_ids_terdampak: set = set()
+    detail = []
+    n_updated = 0
+    n_skip = 0
+
+    for sppd in res_sppd.data:
+        if sppd.get("tanggal_berangkat_custom"):
+            n_skip += 1
+            continue
+
+        sppd_id   = sppd["id"]
+        lokasi_id = sppd["lokasi_id"]
+        status    = sppd["status"]
+        tanpa_us  = sppd.get("tanpa_uang_saku") or False
+
+        pegawai = get_pegawai_by_id(sppd["pegawai_id"])
+        if not pegawai:
+            detail.append({"nama": sppd_id[:8], "ok": False, "pesan": "Pegawai tidak ditemukan"})
+            continue
+
+        if tanpa_us:
+            calc = {"uang_harian": 0, "uang_makan": 0, "transport_lokal": 0, "uang_rep": 0, "subtotal": 0}
+        else:
+            jabatan_id = pegawai.get("jabatan_id")
+            rule = None
+            if jabatan_id and lokasi_id:
+                try:
+                    rule = get_rule_sppd(jabatan_id, lokasi_id)
+                except Exception:
+                    pass
+            calc = hitung_uang_saku(rule, lama_hari) if rule else \
+                   {"uang_harian": 0, "uang_makan": 0, "transport_lokal": 0, "uang_rep": 0, "subtotal": 0}
+
+        subtotal_baru    = calc["subtotal"]
+        subtotal_lama    = sppd.get("subtotal_uang_saku") or 0
+        var_costs        = max(0, (sppd.get("total_biaya") or 0) - subtotal_lama)
+        total_biaya_baru = subtotal_baru + var_costs
+
+        rkap_id_lama = sppd.get("rkap_id")
+        rkap_id_baru = rkap_id_lama
+        rkap_pesan   = ""
+
+        if status in ("pencairan", "realisasi", "completed") and rkap_id_lama:
+            total_biaya_lama = sppd.get("total_biaya") or 0
+            struktur    = (pegawai.get("jabatan") or {}).get("struktur_rkap", "")
+            bidang      = pegawai.get("bidang_resolved") or ""
+            kategori    = resolve_kategori_rkap(struktur, bidang, lokasi_id)
+            rkap_lok_id = LOKASI_BANTUAN_ID if kategori == "bantuan_sppd" else lokasi_id
+            rkap_id_cek = get_rkap_id(kategori, rkap_lok_id, tgl_berangkat.month, tgl_berangkat.year)
+
+            rollback_rkap(rkap_id_lama, total_biaya_lama)
+            if rkap_id_cek:
+                rkap_id_baru = rkap_id_cek
+                deduct_rkap(rkap_id_baru, total_biaya_baru)
+            else:
+                rkap_id_baru = None
+                rkap_pesan   = " ⚠️ RKAP bulan baru tidak ditemukan"
+
+        db.table("sppd").update({
+            "total_hari":              lama_hari,
+            "uang_harian_total":       calc["uang_harian"],
+            "uang_makan_total":        calc["uang_makan"],
+            "transport_lokal_total":   calc["transport_lokal"],
+            "uang_representasi_total": calc["uang_rep"],
+            "subtotal_uang_saku":      subtotal_baru,
+            "total_biaya":             total_biaya_baru,
+            "rkap_id":                 rkap_id_baru,
+        }).eq("id", sppd_id).execute()
+
+        if sppd.get("spd_id"):
+            spd_ids_terdampak.add(sppd["spd_id"])
+
+        detail.append({
+            "nama": pegawai.get("nama", sppd_id[:8]),
+            "ok":   True,
+            "pesan": f"{status.upper()} → {lama_hari} hari{rkap_pesan}",
+        })
+        n_updated += 1
+
+    for spd_id in spd_ids_terdampak:
+        update_rekap_spd(spd_id)
+
+    pesan = f"Tanggal visum diperbarui. {n_updated} SPPD diupdate."
+    if n_skip:
+        pesan += f" {n_skip} SPPD dilewati (punya tanggal custom)."
+    return {"success": True, "pesan": pesan, "n_updated": n_updated, "n_skip": n_skip, "detail": detail}
+
+
 def sync_sppd_peserta(visum: dict, peserta_baru: list, lokasi_id: str, spd_id: str) -> dict:
     """
     Sinkronisasi SPPD saat peserta visum diedit.

@@ -6,6 +6,7 @@ from utils.database import (
     create_spd_baru, get_spd_by_id, get_spd_list_semua, assign_visum_ke_spd,
     auto_buat_semua_sppd, sync_sppd_peserta, cancel_semua_sppd_visum,
     update_tujuan_visum,
+    update_tanggal_visum,
 )
 from utils.pdf_generator import (
     generate_visum, generate_surat_tugas, generate_spd, fmt_tgl_short, fmt_waktu_surat_tugas
@@ -465,19 +466,25 @@ with tab3:
                                     "Tanggal Kembali",
                                     value=datetime.strptime(v["tanggal_kembali"], "%Y-%m-%d").date()
                                 )
+                            lama_preview = (edit_tgl_kembali - edit_tgl_berangkat).days + 1
+                            hari_lama = v["lama_hari"]
+                            if lama_preview != hari_lama:
+                                st.warning(f"Durasi berubah {hari_lama} → {lama_preview} hari — semua SPPD tanpa tanggal custom akan direcalculate & RKAP disesuaikan.")
                             simpan_tgl = st.form_submit_button("💾 Simpan Tanggal", use_container_width=True)
                             if simpan_tgl:
                                 if edit_tgl_kembali < edit_tgl_berangkat:
                                     st.error("❌ Tanggal kembali tidak boleh sebelum tanggal berangkat!")
                                 else:
+                                    hasil_tgl = update_tanggal_visum(
+                                        visum_id, edit_tgl_visum, edit_tgl_berangkat, edit_tgl_kembali
+                                    )
                                     lama_baru = (edit_tgl_kembali - edit_tgl_berangkat).days + 1
-                                    db.table("visum").update({
-                                        "tanggal_visum":     str(edit_tgl_visum),
-                                        "tanggal_berangkat": str(edit_tgl_berangkat),
-                                        "tanggal_kembali":   str(edit_tgl_kembali),
-                                        "lama_hari":         lama_baru,
-                                    }).eq("id", visum_id).execute()
-                                    st.success(f"✅ Tanggal diperbarui! Lama: {lama_baru} hari.")
+                                    msg = f"✅ Tanggal diperbarui! Lama: {lama_baru} hari."
+                                    if hasil_tgl["n_updated"]:
+                                        msg += f" {hasil_tgl['n_updated']} SPPD diupdate."
+                                    if hasil_tgl["n_skip"]:
+                                        msg += f" {hasil_tgl['n_skip']} SPPD dilewati (tanggal custom)."
+                                    st.success(msg)
                                     st.rerun()
 
                 # ── Edit Tujuan & Keperluan ──
