@@ -1007,11 +1007,13 @@ def main():
 
             if pool_tujuan:
                 for i, t in enumerate(pool_tujuan):
-                    r_t   = rkap_by_id.get(t["ke_rkap_id"], {})
-                    lbl_t = _row_label(r_t, show_sisa=False) if r_t else t["ke_rkap_id"][:8]
+                    r_t      = rkap_by_id.get(t["ke_rkap_id"], {})
+                    lbl_t    = _row_label(r_t, show_sisa=False) if r_t else t["ke_rkap_id"][:8]
+                    sisa_tuj = _eff_sisa(t["ke_rkap_id"], pending_pool)
                     col_tl, col_tv, col_tx = st.columns([5, 3, 1])
                     with col_tl:
                         st.write(f"→ **{lbl_t}**")
+                        st.caption(f"sisa saat ini: {format_rp(int(sisa_tuj))}")
                     with col_tv:
                         if t.get("mode") == "nominal":
                             st.write(f"nominal = {format_rp(t['jumlah'])}")
@@ -1032,7 +1034,10 @@ def main():
                     add_ke_id = st.selectbox(
                         "Pilih tujuan baru",
                         options=add_dst_options,
-                        format_func=lambda rid: _row_label(rkap_by_id[rid], show_sisa=False),
+                        format_func=lambda rid: (
+                            _row_label(rkap_by_id[rid], show_sisa=False)
+                            + f"  |  sisa: {format_rp(int(_eff_sisa(rid, pending_pool)))}"
+                        ),
                         key="rlk_pool_add_ke",
                     )
                 r_add_dst = rkap_by_id.get(add_ke_id, {})
