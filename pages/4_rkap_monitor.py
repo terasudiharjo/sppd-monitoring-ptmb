@@ -868,17 +868,18 @@ def main():
         if is_bantuan_move:
             input_mode = st.radio(
                 "Mode input (bantuan):",
-                ["Trip (estimasi Staf Pelaksana)", "Nominal Langsung"],
+                ["Trip (hitung per trip)", "Nominal Langsung"],
                 horizontal=True,
                 key="rlk_input_mode",
             )
         else:
-            input_mode = "Trip (estimasi Staf Pelaksana)"
+            input_mode = "Trip (hitung per trip)"
 
-        if input_mode == "Trip (estimasi Staf Pelaksana)":
-            rule_sel    = _get_rate(r_sel)
+        if input_mode == "Trip (hitung per trip)":
+            # Gunakan rate TUJUAN — jumlah yang dipindah = cukup untuk N trip di tujuan
+            rule_sel    = _get_rate(r_dst)
             uang_harian = rule_sel["uang_harian"]
-            min_hari    = MIN_HARI_LOKASI.get(r_sel.get("lokasi_id", ""), 1)
+            min_hari    = MIN_HARI_LOKASI.get(r_dst.get("lokasi_id", ""), 1)
 
             col_h, col_t, col_info = st.columns(3)
             with col_h:
@@ -907,6 +908,7 @@ def main():
             with col_info:
                 st.metric("Nilai/trip", format_rp(nilai_per_token))
                 st.caption(
+                    f"Rate dari: **Tujuan**  \n"
                     f"Harian: {format_rp(uang_harian)}/hr × {hari_per_token}  \n"
                     f"Pesawat PP: {format_rp(pesawat_pp)}  \n"
                     f"Hotel: {format_rp(rule_sel['plafon_hotel'])}/mlm × {max(0, hari_per_token-1)}"
@@ -918,19 +920,19 @@ def main():
                 if sisa_ok:
                     st.caption(f"Sisa sumber setelah: {format_rp(int(sisa_after))} ✓")
                 elif nilai_per_token == 0:
-                    st.caption("Rate tidak ditemukan untuk kategori ini")
+                    st.caption("Rate tujuan tidak ditemukan — gunakan Nominal Langsung")
                 else:
                     st.caption(f"Sisa sumber tidak cukup ({format_rp(int(eff_sisa_src))} < {format_rp(jumlah_rp)})")
             with col_btn:
                 st.write("")
                 if st.button("+ Tambah ke Daftar", disabled=not sisa_ok, key="rlk_tambah_btn", use_container_width=True):
                     st.session_state.rlk_moves_list.append({
-                        "dari_rkap_id":  sumber_sel_id,
-                        "ke_rkap_id":    tujuan_sel_id,
-                        "jumlah_token":  int(jumlah_token),
+                        "dari_rkap_id":   sumber_sel_id,
+                        "ke_rkap_id":     tujuan_sel_id,
+                        "jumlah_token":   int(jumlah_token),
                         "hari_per_token": int(hari_per_token),
-                        "rate_per_hari": int(uang_harian),
-                        "jumlah":        jumlah_rp,
+                        "rate_per_hari":  int(uang_harian),
+                        "jumlah":         jumlah_rp,
                     })
                     st.session_state.rlk_show_preview = False
                     st.rerun()
@@ -962,16 +964,172 @@ def main():
                 st.write("")
                 if st.button("+ Tambah ke Daftar", disabled=not sisa_ok, key="rlk_tambah_btn", use_container_width=True):
                     st.session_state.rlk_moves_list.append({
-                        "dari_rkap_id":  sumber_sel_id,
-                        "ke_rkap_id":    tujuan_sel_id,
-                        "jumlah_token":  0,
+                        "dari_rkap_id":   sumber_sel_id,
+                        "ke_rkap_id":     tujuan_sel_id,
+                        "jumlah_token":   0,
                         "hari_per_token": 0,
-                        "rate_per_hari": 0,
-                        "jumlah":        jumlah_rp,
-                        "mode":          "nominal",
+                        "rate_per_hari":  0,
+                        "jumlah":         jumlah_rp,
+                        "mode":           "nominal",
                     })
                     st.session_state.rlk_show_preview = False
                     st.rerun()
+
+        # ── Kumpulkan beberapa sumber ke satu tujuan ──────────────────────────
+        st.divider()
+        with st.expander("🔀 Kumpulkan beberapa sumber ke satu tujuan"):
+            st.caption(
+                "Gabungkan sisa dari beberapa baris RKAP ke satu tujuan sekaligus. "
+                "Sumber dengan sisa terkecil dikuras lebih dulu."
+            )
+            pending_ms = _pending_deltas(moves_list)
+
+            col_ms_dst, col_ms_mode = st.columns([3, 2])
+            with col_ms_dst:
+                ms_tujuan_id = st.selectbox(
+                    "Tujuan (Ke)",
+                    options=[r["id"] for r in sorted_rows],
+                    format_func=lambda rid: _row_label(rkap_by_id[rid], show_sisa=False),
+                    key="rlk_ms_tujuan_sel",
+                )
+            r_ms_dst = rkap_by_id.get(ms_tujuan_id, {})
+
+            with col_ms_mode:
+                ms_mode = st.radio(
+                    "Mode total",
+                    ["Trip", "Nominal"],
+                    horizontal=True,
+                    key="rlk_ms_mode",
+                )
+
+            if ms_mode == "Trip":
+                rule_ms        = _get_rate(r_ms_dst)
+                min_hari_ms    = MIN_HARI_LOKASI.get(r_ms_dst.get("lokasi_id", ""), 1)
+                ms_uang_harian = rule_ms["uang_harian"]
+
+                col_msh, col_mst, col_msinfo = st.columns(3)
+                with col_msh:
+                    ms_hari = st.number_input(
+                        f"Hari/trip (min {min_hari_ms})",
+                        min_value=min_hari_ms, max_value=30,
+                        value=max(min_hari_ms, 4), step=1,
+                        key="rlk_ms_hari",
+                    )
+                ms_pesawat_pp  = rule_ms["plafon_pesawat"] * 2
+                ms_hotel_trip  = rule_ms["plafon_hotel"] * max(0, ms_hari - 1)
+                ms_nilai_trip  = ms_uang_harian * ms_hari + ms_pesawat_pp + ms_hotel_trip
+
+                with col_mst:
+                    ms_jumlah_token = st.number_input(
+                        "Jumlah trip",
+                        min_value=1, max_value=50, value=1, step=1,
+                        key="rlk_ms_token",
+                    )
+                ms_total_needed = int(ms_jumlah_token * ms_nilai_trip)
+
+                with col_msinfo:
+                    st.metric("Nilai/trip", format_rp(ms_nilai_trip) if ms_nilai_trip else "—")
+                    if ms_nilai_trip:
+                        st.caption(
+                            f"Rate dari: **Tujuan**  \n"
+                            f"Harian: {format_rp(ms_uang_harian)}/hr × {ms_hari}  \n"
+                            f"Pesawat PP: {format_rp(ms_pesawat_pp)}  \n"
+                            f"Hotel: {format_rp(rule_ms['plafon_hotel'])}/mlm × {max(0, ms_hari-1)}"
+                        )
+                    else:
+                        st.caption("Rate tujuan tidak ditemukan — gunakan mode Nominal")
+            else:
+                ms_total_needed = int(st.number_input(
+                    "Total nominal yang akan dipindah (Rp)",
+                    min_value=0, value=0, step=1_000_000,
+                    key="rlk_ms_nominal",
+                ))
+                ms_jumlah_token = 0
+                ms_hari         = 0
+                ms_nilai_trip   = 0
+
+            sumber_options_ms = [r["id"] for r in sorted_rows if r["id"] != ms_tujuan_id]
+            ms_sumber_ids = st.multiselect(
+                "Sumber (pilih beberapa)",
+                options=sumber_options_ms,
+                format_func=lambda rid: (
+                    _row_label(rkap_by_id[rid], show_sisa=False)
+                    + f"  |  efektif sisa: {format_rp(int(_eff_sisa(rid, pending_ms)))}"
+                ),
+                key="rlk_ms_sumber_sel",
+            )
+
+            if ms_sumber_ids and ms_total_needed > 0:
+                # Distribusi: drain sumber terkecil lebih dulu
+                srcs_sorted = sorted(
+                    ms_sumber_ids,
+                    key=lambda rid: _eff_sisa(rid, pending_ms)
+                )
+                distrib  = []
+                remaining = ms_total_needed
+                for rid in srcs_sorted:
+                    if remaining <= 0:
+                        break
+                    sisa_eff = _eff_sisa(rid, pending_ms)
+                    if sisa_eff <= 0:
+                        continue
+                    take = min(sisa_eff, remaining)
+                    distrib.append({"rid": rid, "jumlah": int(take)})
+                    remaining -= take
+
+                tujuan_lbl  = _row_label(r_ms_dst, show_sisa=False)
+                total_terkumpul = sum(d["jumlah"] for d in distrib)
+                kurang = ms_total_needed - total_terkumpul
+
+                st.markdown("**Preview distribusi:**")
+                prev_ms_rows = []
+                for d in distrib:
+                    r_d          = rkap_by_id.get(d["rid"], {})
+                    sisa_sebelum = _eff_sisa(d["rid"], pending_ms)
+                    sisa_sesudah = sisa_sebelum - d["jumlah"]
+                    habis_label  = " *(habis)*" if sisa_sesudah == 0 else ""
+                    prev_ms_rows.append({
+                        "Dari":          _row_label(r_d, show_sisa=False),
+                        "Ke":            tujuan_lbl,
+                        "Dipindah":      format_rp(d["jumlah"]),
+                        "Sisa Setelah":  format_rp(int(sisa_sesudah)) + habis_label,
+                    })
+                st.dataframe(pd.DataFrame(prev_ms_rows), use_container_width=True, hide_index=True)
+
+                if kurang > 0:
+                    st.error(
+                        f"Sisa sumber tidak cukup — kurang {format_rp(int(kurang))} "
+                        f"dari total {format_rp(ms_total_needed)}. "
+                        f"Tambah sumber lain atau kurangi jumlah."
+                    )
+                    ms_ok = False
+                else:
+                    st.success(f"Total dipindah ke **{tujuan_lbl}**: {format_rp(ms_total_needed)}")
+                    ms_ok = True
+
+                if st.button(
+                    f"+ Tambah {len(distrib)} move ke Daftar",
+                    disabled=not ms_ok,
+                    key="rlk_ms_tambah_btn",
+                    use_container_width=True,
+                ):
+                    for d in distrib:
+                        st.session_state.rlk_moves_list.append({
+                            "dari_rkap_id":   d["rid"],
+                            "ke_rkap_id":     ms_tujuan_id,
+                            "jumlah_token":   0,
+                            "hari_per_token": 0,
+                            "rate_per_hari":  0,
+                            "jumlah":         d["jumlah"],
+                            "mode":           "nominal",
+                        })
+                    st.session_state.rlk_show_preview = False
+                    st.rerun()
+
+            elif ms_sumber_ids and ms_total_needed == 0:
+                st.caption("Masukkan jumlah trip atau nominal yang akan dipindah.")
+            else:
+                st.caption("Pilih minimal satu sumber dan tentukan jumlah yang akan dipindah.")
 
         # ── Keterangan + tombol aksi ──
         if moves_list:
