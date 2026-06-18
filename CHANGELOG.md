@@ -4,6 +4,38 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-18
+
+**Fitur: Cancel SPPD Completed (`pages/3_sppd.py`):**
+1. Expander konfirmasi "⚠️ Cancel SPPD Completed (koreksi data)" ditambahkan di bawah pesan status "✅ SPPD ini sudah COMPLETED" — tersedia tanpa memblokir view normal.
+2. User harus centang checkbox konfirmasi sebelum tombol ❌ Cancel aktif.
+3. Rollback RKAP menggunakan `total_biaya` (seluruh biaya yang tercatat di SPPD), bukan `subtotal_uang_saku`. Alasan: "Simpan Realisasi" menyesuaikan RKAP via delta `selisih = new_var - old_var`, sehingga `total_biaya` = uang saku + semua biaya riil yang sudah di-deduct ke RKAP.
+4. Setelah cancel: `sppd.status → cancelled`, rekap SPD di-update, halaman di-rerun.
+
+**Fitur: Edit Tanggal Visum propagate ke SPPD (`utils/database.py`, `pages/2_visum.py`):**
+5. Fungsi baru `update_tanggal_visum(visum_id, tgl_visum, tgl_berangkat, tgl_kembali)` di `database.py`:
+   - Update `visum` table (tanggal_visum, tanggal_berangkat, tanggal_kembali, lama_hari).
+   - Fetch semua SPPD non-cancelled dalam visum; **skip** SPPD yang punya `tanggal_berangkat_custom` (mereka punya override tanggal sendiri).
+   - Per SPPD: hitung `total_hari` baru, recalc uang saku dari rule (kecuali `tanpa_uang_saku=True` — update hari saja, uang saku tetap 0).
+   - Untuk status `pencairan`/`realisasi`/`completed`: rollback `total_biaya` lama ke `rkap_id` lama, resolve `rkap_id` baru (bisa beda jika bulan berubah), deduct `total_biaya` baru.
+   - Panggil `update_rekap_spd()` untuk setiap SPD yang terdampak.
+   - Return dict: `{success, pesan, n_updated, n_skip, detail[]}`.
+6. UI `pages/2_visum.py`: form "Edit Tanggal Visum" kini memanggil `update_tanggal_visum()` alih-alih update DB langsung. Menampilkan preview `{hari_lama} → {hari_baru} hari` sebelum submit. Pesan sukses mencantumkan berapa SPPD di-update dan berapa yang di-skip (karena tanggal custom).
+
+**Perbaikan: Rate trip Realokasi RKAP dari Tujuan (`pages/4_rkap_monitor.py`):**
+7. Rate/trip sekarang dihitung berdasarkan **tujuan** sebagai default (sebelumnya dari sumber).
+8. Toggle "Basis rate trip: Tujuan | Sumber" tersedia per move — jika Sumber dipilih, min_hari juga mengikuti sumber. Caption breakdown tarif menampilkan "Rate dari: Tujuan/Sumber".
+9. Label mode trip diubah dari "Trip (estimasi Staf Pelaksana)" → **"Trip (hitung per trip)"** untuk lebih generik.
+
+**Fitur: Pool & Distribusi multi-sumber → multi-tujuan (`pages/4_rkap_monitor.py`):**
+10. Expander baru "🔄 Pool & Distribusi (multi-sumber → multi-tujuan)" di Tab 4 Realokasi RKAP.
+11. **Step 1 — Pilih Sumber**: `st.multiselect` untuk pilih 1+ baris RKAP sumber. Setiap opsi tampil dengan sisa efektif `Rp X`. Panel summary total pool terkumpul.
+12. **Step 2 — Tentukan Tujuan**: list tujuan dinamis dari `st.session_state.rlk_pool_tujuan_list`. Setiap tujuan bisa dipilih mode Trip (dengan toggle basis rate Tujuan/Sumber + hari) atau Nominal. Tampil sisa saat ini per tujuan. Tombol "Pilih tujuan baru" + "Tambah Tujuan"; hapus per baris dengan ✕.
+13. **Step 3 — Distribusi & Commit**: algoritma greedy drain-smallest-first — sumber diurutkan ascending by effective sisa, sumber terkecil dihabiskan dulu; isi tujuan satu per satu secara berurutan. Preview tabel matrix Dari×Ke dengan jumlah Rupiah per aliran + tabel sisa sumber setelah distribusi. Tombol commit mengumpulkan semua move ke `st.session_state.rlk_moves_list` (dengan `mode="nominal"`) untuk diproses bersama move reguler.
+14. Session state `rlk_pool_tujuan_list` persists list tujuan antar interaksi UI.
+
+---
+
 ## Sesi 2026-06-16
 
 **Investigasi & Fix: RKAP Dewas Dalam Kaltim tidak ter-deduct (Visum 0055)**

@@ -151,6 +151,13 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 5. **Nomor otomatis Pernyataan Biaya Riil** — saat ini dikosongkan (diisi manual setelah cetak). Rencana: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate saat SPPD masuk status `realisasi`, format sequential per tahun mirip `generate_nomor_visum`. Di `3_sppd.py` kirim kolom tsb ke `nomor_surat` di `pb_data`, di PDF sudah otomatis handle: kalau kosong → tampil garis, kalau ada → tampil nomor.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
 
+### ✅ Selesai sesi 2026-06-18:
+- **Cancel SPPD completed** (`pages/3_sppd.py`): expander konfirmasi "⚠️ Cancel SPPD Completed (koreksi data)" muncul di bawah status completed. Rollback menggunakan `total_biaya` (bukan `subtotal_uang_saku`) karena "Simpan Realisasi" menyimpan seluruh biaya riil ke RKAP via delta.
+- **Fungsi baru `update_tanggal_visum(visum_id, tgl_visum, tgl_berangkat, tgl_kembali)`** (`utils/database.py`): update tabel visum + propagate perubahan tanggal ke semua SPPD non-cancelled yang tidak punya `tanggal_berangkat_custom`. Recalc `total_hari` + uang saku per SPPD; adjust RKAP (rollback lama + deduct baru, pindah `rkap_id` jika bulan berubah). Includes completed SPPDs. Respects `tanpa_uang_saku` (total_hari diupdate, uang saku tetap 0). Returns `{"success", "pesan", "n_updated", "n_skip", "detail"}`.
+- **Edit Tanggal Visum propagate ke SPPD** (`pages/2_visum.py`): form "Edit Tanggal Visum" kini memanggil `update_tanggal_visum()` — SPPD di dalam visum otomatis di-recalc durasi hari + uang saku + RKAP. Menampilkan preview `{hari_lama} → {lama_preview} hari` sebelum simpan. Pesan sukses mencantumkan n_updated dan n_skip.
+- **Realokasi RKAP: rate dari tujuan** (`pages/4_rkap_monitor.py`): rate/trip sekarang dihitung dari **tujuan** (default). Toggle "Basis rate trip: Tujuan | Sumber" tersedia di setiap move. Label mode trip diubah dari "Trip (estimasi Staf Pelaksana)" → "Trip (hitung per trip)".
+- **Pool & Distribusi multi-sumber → multi-tujuan** (`pages/4_rkap_monitor.py`): expander baru 3 langkah — (1) multiselect sumber RKAP (tampil sisa per opsi + total pool), (2) list tujuan dinamis masing-masing dengan mode Trip/Nominal + hari; tujuan trip punya toggle basis rate Tujuan/Sumber; tampil sisa saat ini per tujuan; (3) greedy distribute: drain sumber terkecil dulu, isi tujuan berurutan — preview matrix Dari×Ke + tabel sisa sumber + tombol commit. Semua move dihasilkan sebagai `mode="nominal"`.
+
 ### ✅ Selesai sesi 2026-06-16:
 - **Fix bug `update_tujuan_visum`** (`utils/database.py`): saat tujuan visum berubah lokasi (misal Luar→Dalam Kaltim), SPPD berstatus `draft` tidak di-update `rkap_id`-nya — hanya `lokasi_id` dan uang saku yang berubah. Akibatnya saat pencairan deduct ke bucket lokasi lama. Fix: branch `elif sppd["status"] == "draft"` ditambah untuk update pointer `rkap_id` ke lokasi baru (tanpa rollback/deduct karena draft belum deduct).
 - **Script diagnostik `check/cek_dewas_rkap.py`**: audit `struktur_rkap` jabatan DEWAS, cek baris RKAP kategori DEWAS*, dan trace ke mana tiap SPPD Dewas aktif ter-deduct. Berguna deteksi mismatch `lokasi_id` vs `rkap_id`.
@@ -223,7 +230,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 
 ## Keputusan Desain yang Sudah Disepakati
 
-### Realokasi RKAP (✅ selesai sesi 2026-06-15)
+### Realokasi RKAP (✅ diperbarui sesi 2026-06-18)
 
 **Konsep:** Pindahkan pagu anggaran (`anggaran_awal`) antar baris RKAP. `anggaran_terpakai` tidak berubah — hanya pagu yang digeser.
 
@@ -233,7 +240,8 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 - Tabel `rkap_realokasi_draft`: `id, nama, tahun, keterangan, moves (jsonb), created_at, updated_at` — untuk simpan draft antar sesi
 
 **Mekanisme kalkulasi:**
-- Input per move: pilih sumber RKAP, pilih tujuan RKAP, hari/trip (bisa beda per move, default = MIN_HARI_LOKASI sumber), jumlah trip
+- Input per move: pilih sumber RKAP, pilih tujuan RKAP, hari/trip (bisa beda per move, default = MIN_HARI_LOKASI sumber/tujuan), jumlah trip
+- **Rate/trip dihitung dari tujuan (default)** — toggle "Basis rate trip: Tujuan | Sumber" tersedia per move
 - Rate/hari = `uang_harian` (uang_saku + uang_makan + transport_lokal + uang_representasi) + pesawat PP + hotel per trip
 - Rupiah pindah = trip × (uang_harian × hari + pesawat_pp + hotel × (hari-1))
 - Satu batch = banyak pasang (dari→ke) berbeda; sumber divalidasi aggregate per rkap_id
@@ -256,7 +264,8 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 
 **UI di `pages/4_rkap_monitor.py` Tab 4 "Realokasi RKAP":**
 - Panel "📂 Draft Tersimpan" — muat/hapus draft yang sudah disimpan
-- Form tambah move: pilih Sumber + Tujuan (urut Kategori→Lokasi→Bulan; prefix `🔴` jika sisa negatif), hari/trip, jumlah trip → "+ Tambah ke Daftar"; jika sumber/tujuan adalah kategori bantuan → radio "Trip (estimasi Staf Pelaksana)" | "Nominal Langsung"
+- **Form tambah move (satu pasang dari→ke):** pilih Sumber + Tujuan (urut Kategori→Lokasi→Bulan; prefix `🔴` jika sisa negatif), toggle "Basis rate trip: Tujuan | Sumber", hari/trip, jumlah trip → "+ Tambah ke Daftar"; mode "Trip (hitung per trip)" | "Nominal Langsung" tersedia jika sumber/tujuan adalah kategori bantuan
+- **Expander "🔄 Pool & Distribusi (multi-sumber → multi-tujuan)"**: Step 1: multiselect sumber + tampil sisa per baris + total pool; Step 2: list tujuan dinamis per-tujuan mode Trip/Nominal + toggle basis rate + tampil sisa tujuan; Step 3: greedy drain-smallest-first → preview matrix Dari×Ke + tabel sisa sumber + tombol commit. Seluruh moves disimpan ke `rlk_moves_list` dan dieksekusi via `eksekusi_realokasi_multi()`
 - Daftar moves ter-queue ditampilkan dengan tombol ✕ per baris
 - Tombol "💾 Simpan Draft" (isi nama draft dulu) → tersimpan di Supabase, bisa dilanjutkan lain waktu
 - Tombol "🔍 Preview & Finalisasi" → tampilkan: tabel moves, pivot Jan–Des sebelum/sesudah, perbandingan per TW/Semester (anggaran + sisa, ikon 🟢/🔴/🚨)
@@ -393,6 +402,7 @@ Setiap selesai satu sesi agar dapat mengupdate CHANGELOG.md
 | `update_tanggal_sppd_custom(sppd_id, tgl_b, tgl_k)` | Update tanggal custom per SPPD + recalc uang saku + adjust RKAP |
 | `update_jabatan_dokumen_sppd(sppd_id, jabatan_dokumen)` | Simpan override label jabatan di PDF (untuk tamu eksternal) |
 | `update_tanpa_uang_saku(sppd_id, enabled)` | Toggle tanpa uang saku: zero out / recalc uang saku + adjust RKAP jika pencairan |
+| `update_tanggal_visum(visum_id, tgl_visum, tgl_berangkat, tgl_kembali)` | Update tanggal visum + propagate ke semua SPPD non-custom: recalc total_hari + uang saku + adjust RKAP (termasuk completed) |
 | `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` | Update tujuan+keperluan visum; jika tujuan berubah → recalc lokasi_id+uang saku semua SPPD + adjust RKAP |
 | `save_biaya_lain(sppd_id, items)` | Simpan biaya lain-lain (replace) |
 | `get_biaya_lain(sppd_id)` | Ambil biaya lain-lain |
