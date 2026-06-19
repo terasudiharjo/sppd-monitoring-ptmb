@@ -1079,6 +1079,12 @@ def main():
                     min_hari_add = MIN_HARI_LOKASI.get(r_add_rate.get("lokasi_id", ""), 1)
                     add_harian   = rule_add["uang_harian"]
 
+                    # Reset spinner hari saat destinasi atau basis rate berubah
+                    _pool_rate_key = r_add_rate.get("id", add_ke_id)
+                    if st.session_state.get("_pool_rate_key_prev") != _pool_rate_key:
+                        st.session_state["_pool_rate_key_prev"] = _pool_rate_key
+                        st.session_state["rlk_pool_add_hari"] = max(min_hari_add, 4)
+
                     col_ah, col_at, col_ainfo = st.columns(3)
                     with col_ah:
                         add_hari = st.number_input(
@@ -1109,6 +1115,11 @@ def main():
                             )
                         else:
                             st.caption("Rate tidak ditemukan — gunakan Nominal")
+                    if add_nilai_trip and add_jumlah > 0:
+                        st.info(
+                            f"**Total: {add_token} trip × {format_rp(add_nilai_trip)}/trip"
+                            f" = {format_rp(add_jumlah)}**"
+                        )
                     add_mode_str      = None
                     add_jumlah_token  = int(add_token)
                     add_hari_val      = int(add_hari)
