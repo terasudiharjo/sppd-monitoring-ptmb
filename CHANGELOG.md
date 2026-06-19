@@ -4,6 +4,29 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-19
+
+**Fix: Bug spinner hari di Pool Distribusi RKAP (`pages/4_rkap_monitor.py`):**
+1. Root cause: Streamlit hanya memakai parameter `value=` pada render pertama; setelah itu `st.session_state` mengontrol nilai widget. Akibatnya `rlk_pool_add_hari` bisa retain nilai tinggi (misal 7 hari) dari sesi sebelumnya saat destinasi baru dipilih, membuat `add_nilai_trip` lebih besar dari yang ditampilkan (tampil 15.8M/trip tapi tersimpan 21.3M, total 2 trip = 42.6M).
+2. Fix: tracking `_pool_rate_key_prev` (berisi `.id` dari row RKAP yang dipakai sebagai rate basis). Setiap kali key berubah (destinasi atau radio "Tujuan/Sumber" berubah) → `st.session_state["rlk_pool_add_hari"]` di-set ulang ke `max(min_hari_lokasi, 4)`.
+
+**Fitur: Tampilkan total rupiah sebelum tombol add di Pool Distribusi (`pages/4_rkap_monitor.py`):**
+3. Kotak info biru `"Total: N trip × Rp X/trip = Rp Y"` ditampilkan setelah tiga kolom (hari/trip/info), sebelum tombol "➕ Tambah Tujuan". Memudahkan verifikasi angka sebelum klik.
+
+**Fix: Nomor partial Pernyataan Biaya Riil (`pages/3_sppd.py`, `utils/pdf_generator.py`):**
+4. `pb_data` sekarang menyertakan `nomor_surat_suffix` — dihitung dari `nomor_spd`: ambil bagian setelah `/` pertama, hilangkan trailing `-O`. Contoh: `"0034/1421002/10a-I/II/2026-O"` → suffix `"1421002/10a-I/II/2026"`.
+5. `_draw_pernyataan()` di `pdf_generator.py` menangani tiga kasus: (a) `nomor_surat` terisi → tampil lengkap; (b) `nomor_surat` kosong + `nomor_surat_suffix` ada → tampil `Nomor : ___/1421002/10a-I/II/2026` (garis 2.5cm untuk nomor urut); (c) keduanya kosong → tampil garis panjang 6.5cm (backward compat).
+
+**Fix: Urutan peserta di PDF Visum (`pages/2_visum.py`):**
+6. Tambah field `struktur_rkap` ke dict `peserta_pdf` (diambil dari `jabatan.struktur_rkap`).
+7. Sort diganti dari `-level, nip` ke fungsi `_tier()` context-aware:
+   - **Ada Ketua Dewas:** tier 0=DEWAS_KETUA, 1=DEWAS_ANGGOTA*, 2=DIRUT, 3=DIRUM/DIRTEK/DIROPS, 99=lainnya
+   - **Hanya Anggota Dewas:** tier 0=DIRUT, 1=DEWAS_ANGGOTA*, 2=DIRUM/DIRTEK/DIROPS, 99=lainnya
+   - **Tanpa Dewas:** tier 0=DIRUT, 2=DIRUM/DIRTEK/DIROPS, 99=lainnya
+   - Dalam satu tier: tiebreaker `-level` (seniority DB) lalu NIP ascending.
+
+---
+
 ## Sesi 2026-06-18
 
 **Fitur: Cancel SPPD Completed (`pages/3_sppd.py`):**
