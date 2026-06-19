@@ -1483,8 +1483,22 @@ def _draw_pernyataan(c, data):
     y -= 0.45*cm
     c.setFont(FONT_NORMAL, FONT_SIZE)
     nomor_surat = data.get("nomor_surat", "")
+    nomor_suffix = data.get("nomor_surat_suffix", "")
     if nomor_surat:
         c.drawCentredString(PAGE_W/2, y, f"Nomor : {nomor_surat}")
+    elif nomor_suffix:
+        # "Nomor : ___/1421002/10a-I/II/2026" — nomor urut kosong untuk diisi manual
+        label       = "Nomor : "
+        suffix_text = f"/{nomor_suffix}"
+        label_w     = c.stringWidth(label,       FONT_NORMAL, FONT_SIZE)
+        suffix_w    = c.stringWidth(suffix_text, FONT_NORMAL, FONT_SIZE)
+        line_w      = 2.5 * cm
+        x_label = PAGE_W/2 - (label_w + line_w + suffix_w) / 2
+        c.drawString(x_label, y, label)
+        x_line = x_label + label_w
+        c.setLineWidth(0.5)
+        c.line(x_line, y - 1, x_line + line_w, y - 1)
+        c.drawString(x_line + line_w, y, suffix_text)
     else:
         label = "Nomor : "
         label_w = c.stringWidth(label, FONT_NORMAL, FONT_SIZE)

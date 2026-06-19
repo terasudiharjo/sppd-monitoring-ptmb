@@ -541,8 +541,17 @@ with tab2:
                 if s["status"] in ["realisasi", "completed"]:
                     dir_umum = get_pegawai_by_jabatan_nama("DIREKTUR BIDANG UMUM")
                     dir_umum_nama = dir_umum["nama"].title() if dir_umum else "Direktur Umum"
+                    # Suffix format nomor: "1421002/10a-I/II/2026" dari nomor_spd tanpa kode -O
+                    _nomor_spd_val = spd_data.get("nomor_spd", "")
+                    if "/" in _nomor_spd_val:
+                        _pb_suffix = "/".join(_nomor_spd_val.split("/")[1:])
+                        if _pb_suffix.endswith("-O"):
+                            _pb_suffix = _pb_suffix[:-2]
+                    else:
+                        _pb_suffix = ""
                     pb_data = {
-                        "nomor_surat":            "",  # dikosongkan, diisi manual — nanti bisa auto-generate
+                        "nomor_surat":            "",  # nomor urut dikosongkan — diisi manual
+                        "nomor_surat_suffix":     _pb_suffix,  # e.g. "1421002/10a-I/II/2026"
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
                         "tanggal_spd":            _parse_date(spd_data.get("tanggal_spd")) or date.today(),
                         "nama":                   pegawai_data.get("nama", "").title(),

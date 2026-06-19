@@ -728,14 +728,40 @@ with tab3:
                     p = pegawai_map.get(pid)
                     if p:
                         peserta_pdf.append({
-                            "nama":    p["nama"],
-                            "nip":     p.get("nip", "-"),
-                            "jabatan": (p.get("jabatan") or {}).get("nama", "-"),
-                            "divisi":  (p.get("divisi") or {}).get("nama", "-"),
-                            "level":   (p.get("jabatan") or {}).get("level", 0),
+                            "nama":         p["nama"],
+                            "nip":          p.get("nip", "-"),
+                            "jabatan":      (p.get("jabatan") or {}).get("nama", "-"),
+                            "divisi":       (p.get("divisi") or {}).get("nama", "-"),
+                            "level":        (p.get("jabatan") or {}).get("level", 0),
+                            "struktur_rkap":(p.get("jabatan") or {}).get("struktur_rkap", ""),
                         })
-                # Sort: jabatan tertinggi dulu, kalau sama levelnya urut nip
-                peserta_pdf.sort(key=lambda x: (-x["level"], x["nip"]))
+
+                # Sort context-aware berdasarkan kehadiran Dewas:
+                # - Ada Ketua Dewas  → Ketua Dewas > Anggota Dewas > Dirut > Direktur > dst
+                # - Hanya Anggota Dewas → Dirut > Anggota Dewas > Direktur > dst
+                # - Tanpa Dewas     → Dirut > Direktur Bidang > Manajer > SPV > Staf
+                _DEWAS_ANGGOTA = {"DEWAS_ANGGOTA", "DEWAS_ANGGOTA_1", "DEWAS_ANGGOTA_2"}
+                _has_ketua  = any(x["struktur_rkap"] == "DEWAS_KETUA"  for x in peserta_pdf)
+                _has_anggota = any(x["struktur_rkap"] in _DEWAS_ANGGOTA for x in peserta_pdf)
+
+                def _tier(x):
+                    s = x.get("struktur_rkap", "")
+                    if _has_ketua:
+                        _map = {
+                            "DEWAS_KETUA": 0,
+                            **{k: 1 for k in _DEWAS_ANGGOTA},
+                            "DIRUT": 2,
+                            "DIRUM": 3, "DIRTEK": 3, "DIROPS": 3,
+                        }
+                    else:
+                        _map = {
+                            "DIRUT": 0,
+                            **({k: 1 for k in _DEWAS_ANGGOTA} if _has_anggota else {}),
+                            "DIRUM": 2, "DIRTEK": 2, "DIROPS": 2,
+                        }
+                    return (_map.get(s, 99), -x.get("level", 0), x.get("nip", ""))
+
+                peserta_pdf.sort(key=_tier)
                 
                 # Ambil data SPD via sppd (visum bisa share SPD dengan visum lain)
                 res_spd_ref = db.table("sppd").select("spd_id")\
