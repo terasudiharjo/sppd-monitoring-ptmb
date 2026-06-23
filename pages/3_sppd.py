@@ -9,6 +9,7 @@ from utils.database import (
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
     recalculate_sppd, update_tanggal_sppd_custom, update_jabatan_dokumen_sppd,
     update_tanpa_uang_saku,
+    smart_title,
 )
 from utils.pdf_generator import (
     generate_sppd_pencairan, generate_sppd_realisasi, generate_pernyataan_biaya
@@ -28,7 +29,7 @@ if "authenticated" not in st.session_state or not st.session_state.authenticated
 
 # ─── HELPER ────────────────────────────────────────────
 def _strip_div_prefix(nama: str) -> str:
-    return re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip().title()
+    return smart_title(re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip())
 
 def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map: dict) -> str:
     """Format jabatan untuk judul & TTD PDF SPPD (tidak disingkat, title case).
@@ -41,7 +42,7 @@ def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map
     if jabatan_nama.upper().startswith("TAMU"):
         return ""
     if not divisi_obj or not isinstance(divisi_obj, dict):
-        return jabatan_nama.title()
+        return smart_title(jabatan_nama)
     jab = jabatan_nama.lower()
     if "manajer" in jab or "manager" in jab:
         parent_id = divisi_obj.get("parent_id")
@@ -54,7 +55,7 @@ def format_jabatan_sppd_penerima(jabatan_nama: str, divisi_obj: dict, divisi_map
         pkwt_tag = "PKWT " if jabatan_nama.upper() == "STAF PKWT" else ""
         return f"Staf {pkwt_tag}{_strip_div_prefix(divisi_obj.get('nama', ''))}".strip()
     else:
-        return jabatan_nama.title()
+        return smart_title(jabatan_nama)
 
 def format_rupiah(amount) -> str:
     if not amount:
@@ -364,7 +365,7 @@ with tab2:
                 "tgl_berangkat":    tgl_eff_b,
                 "tgl_kembali":      tgl_eff_k,
                 "lama_hari":        s.get("total_hari", 0),
-                "nama_penerima":    pegawai_data.get("nama", "").title(),
+                "nama_penerima":    smart_title(pegawai_data.get("nama", "")),
                 "jabatan_penerima": _jab_label,
                 "uang_harian":      (
                     (s.get("uang_harian_total") or 0) +
@@ -511,6 +512,7 @@ with tab2:
                     real_data = {
                         **base_data,
                         "biaya_penginapan_aktual": s.get("total_hotel", 0),
+                        "hotel_keterangan":        s.get("hotel_keterangan") or "",
                         "items_transport": [
                             {
                                 "keterangan": f"{t['kota_asal']} - {t['kota_tujuan']}"
@@ -540,7 +542,7 @@ with tab2:
             with col_pdf3:
                 if s["status"] in ["realisasi", "completed"]:
                     dir_umum = get_pegawai_by_jabatan_nama("DIREKTUR BIDANG UMUM")
-                    dir_umum_nama = dir_umum["nama"].title() if dir_umum else "Direktur Umum"
+                    dir_umum_nama = smart_title(dir_umum["nama"]) if dir_umum else "Direktur Umum"
                     # Suffix format nomor: "1421002/10a-I/II/2026" dari nomor_spd tanpa kode -O
                     _nomor_spd_val = spd_data.get("nomor_spd", "")
                     if "/" in _nomor_spd_val:
@@ -554,7 +556,7 @@ with tab2:
                         "nomor_surat_suffix":     _pb_suffix,  # e.g. "1421002/10a-I/II/2026"
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
                         "tanggal_spd":            _parse_date(spd_data.get("tanggal_spd")) or date.today(),
-                        "nama":                   pegawai_data.get("nama", "").title(),
+                        "nama":                   smart_title(pegawai_data.get("nama", "")),
                         "jabatan":                _jab_label,
                         "nomor_surat_tugas":      spd_data.get("nomor_spd", "-").replace("-O", "-F"),
                         "tempat_kegiatan":        visum_data.get("tujuan", ""),
@@ -562,13 +564,14 @@ with tab2:
                         "tanggal_kembali":        s.get("tanggal_kembali_custom") or visum_data.get("tanggal_kembali"),
                         "biaya_perjalanan":       s.get("subtotal_uang_saku", 0),
                         "biaya_penginapan":       s.get("total_hotel", 0),
+                        "hotel_keterangan":       s.get("hotel_keterangan") or "",
                         "biaya_transport":        s.get("total_transport", 0),
                         "biaya_lain":             max(0, (s.get("total_biaya") or 0) - (s.get("subtotal_uang_saku") or 0) - (s.get("total_hotel") or 0) - (s.get("total_transport") or 0)),
                         "grand_total":            s.get("total_biaya", 0),
                         "tanggal_ttd":            date.today(),
                         "ttd_mengetahui_jabatan": "Direktur Umum",
                         "ttd_mengetahui_nama":    dir_umum_nama,
-                        "nama_penerima":          pegawai_data.get("nama", "").title(),
+                        "nama_penerima":          smart_title(pegawai_data.get("nama", "")),
                         "jabatan_penerima":       _jab_label,
                     }
                     pdf_bytes = generate_pernyataan_biaya(pb_data).read()
@@ -790,6 +793,22 @@ with tab2:
                             total_hotel = int(plafon_real * 0.30 * hari_tidak_menginap)
                             st.caption(f"Tidak menginap: {hari_tidak_menginap} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(total_hotel)}**")
 
+                    # ── Status pembayaran hotel ──
+                    _ket_opts = ["", "sudah_dibayar", "belum_dibayar"]
+                    _ket_labels = {
+                        "": "— (tanpa keterangan)",
+                        "sudah_dibayar": "(sudah dibayar)",
+                        "belum_dibayar": "(belum dibayar)",
+                    }
+                    hotel_keterangan = st.radio(
+                        "Keterangan pembayaran hotel di PDF",
+                        options=_ket_opts,
+                        format_func=lambda x: _ket_labels[x],
+                        index=_ket_opts.index(s.get("hotel_keterangan") or ""),
+                        horizontal=True,
+                        key=f"hotel_ket_{s['id']}"
+                    )
+
                     # ── Biaya Lain-lain ──
                     st.markdown("**Biaya Lain-lain**")
                     biaya_lain_key = f"biaya_lain_{s['id']}"
@@ -849,6 +868,7 @@ with tab2:
                             "total_hotel":          total_hotel,
                             "hari_tidak_menginap":  hari_tidak_menginap,
                             "total_biaya":          total_realisasi_final,
+                            "hotel_keterangan":     hotel_keterangan or None,
                         }).eq("id", s["id"]).execute()
 
                         # Selisih RKAP: bandingkan variable cost lama vs baru

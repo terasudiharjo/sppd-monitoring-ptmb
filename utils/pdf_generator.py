@@ -23,6 +23,7 @@ import os
 from io import BytesIO
 from datetime import date, datetime
 
+import re
 from numpy import pi
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm, mm
@@ -30,6 +31,19 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph
 from reportlab.pdfgen import canvas
+
+_ROMAN_RE = re.compile(
+    r'^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$'
+)
+
+def smart_title(s: str) -> str:
+    """str.title() tapi angka Romawi (I, II, III, IV, ...) tetap kapital semua."""
+    if not s:
+        return s
+    def _fix(w):
+        u = w.upper()
+        return u if u and _ROMAN_RE.match(u) else w
+    return " ".join(_fix(w) for w in s.title().split())
 
 F4 = (215*mm, 330*mm)  # ukuran kertas F4 (Folio) dalam mm
 
@@ -1366,7 +1380,9 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
             item_row("3", "Biaya Penginapan")  # kosong kalau menginap (bayar sendiri dulu)
     else:
         penginapan = data.get("biaya_penginapan_aktual", 0)
-        item_row("3", "Biaya Penginapan", 1, penginapan, penginapan)
+        ket_hotel = data.get("hotel_keterangan") or ""
+        label_penginapan = f"Biaya Penginapan {ket_hotel}".strip()
+        item_row("3", label_penginapan, 1, penginapan, penginapan)
 
     # Uang representasi
     urep = data.get("uang_representasi", 0)
@@ -1597,7 +1613,8 @@ def _draw_pernyataan(c, data):
 
     biaya_row("NO.", "PERINCIAN BIAYA", "REALISASI (RP)", bold=True)
     biaya_row("1.", "Biaya Perjalanan Dinas", fmt_rp2(data.get("biaya_perjalanan",0)))
-    biaya_row("2.", "Biaya Penginapan",       fmt_rp2(data.get("biaya_penginapan",0)))
+    _ket_pb = data.get("hotel_keterangan") or ""
+    biaya_row("2.", f"Biaya Penginapan {_ket_pb}".strip(), fmt_rp2(data.get("biaya_penginapan",0)))
     biaya_row("3.", "Biaya Transport",        fmt_rp2(data.get("biaya_transport",0)))
     biaya_row("4.", "Biaya Lain-lain",        fmt_rp2(data.get("biaya_lain",0)))
     biaya_row("",   "JUMLAH",                fmt_rp2(data.get("grand_total",0)), bold=True)
@@ -1871,8 +1888,8 @@ def generate_laporan_realisasi(data: dict) -> BytesIO:
         x_p = x
         for row in rows:
             pvals = [
-                (row.get("nama","") or "").title(),
-                (row.get("jabatan","") or "").title(),
+                smart_title(row.get("nama","") or ""),
+                smart_title(row.get("jabatan","") or ""),
                 row.get("nomor_voucher","") or "-",
                 _rp(row.get("uang_saku",0)),
                 _rp(row.get("tiket",0)),
@@ -2077,7 +2094,7 @@ def generate_rekap_bulanan(data: dict) -> BytesIO:
         tot_dlm  += dlm
         tot_luar += luar
 
-        vals  = [str(no_jab), jab.title(), str(dlm) if dlm else "-", str(luar) if luar else "-",
+        vals  = [str(no_jab), smart_title(jab), str(dlm) if dlm else "-", str(luar) if luar else "-",
                  str(tot) if tot else "-"]
         aligns= ["c","l","c","c","c"]
         x = ML
@@ -2268,7 +2285,7 @@ def generate_rekap_semester(data: dict) -> BytesIO:
         x = ML
         _cell(c, str(no_jab), x, y, CW_NO, RH, align="c", fs=FS)
         x += CW_NO
-        _cell(c, jab.title(), x, y, CW_JAB, RH, align="l", fs=FS)
+        _cell(c, smart_title(jab), x, y, CW_JAB, RH, align="l", fs=FS)
         x += CW_JAB
         for bt in bulan_list:
             dlm = info[bt]["dalam"]

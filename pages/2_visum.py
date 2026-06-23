@@ -7,6 +7,7 @@ from utils.database import (
     auto_buat_semua_sppd, sync_sppd_peserta, cancel_semua_sppd_visum,
     update_tujuan_visum,
     update_tanggal_visum,
+    smart_title,
 )
 from utils.pdf_generator import (
     generate_visum, generate_surat_tugas, generate_spd, fmt_tgl_short, fmt_waktu_surat_tugas
@@ -56,7 +57,7 @@ def format_jabatan_divisi(jabatan_nama, divisi_nama):
         return ""
     # Strip prefix bawaan DB: "Sub Divisi", "Sub.Divisi", "Divisi", dll (case-insensitive)
     div = re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", divisi_nama, flags=re.IGNORECASE).strip()
-    div = div.title()
+    div = smart_title(div)
 
     jab = jabatan_nama.lower()
     if "manajer" in jab or "manager" in jab:
@@ -66,10 +67,10 @@ def format_jabatan_divisi(jabatan_nama, divisi_nama):
     elif "staf" in jab or "pelaksana" in jab:
         return f"Staf - {div}"
     else:
-        return jabatan_nama.title()
+        return smart_title(jabatan_nama)
 
 def _strip_div_prefix(nama: str) -> str:
-    return re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip().title()
+    return smart_title(re.sub(r"^(sub[\s.]*divisi|divisi)[\s.]*", "", nama, flags=re.IGNORECASE).strip())
 
 def get_divisi_label_surat_tugas(jabatan_nama: str, divisi_obj: dict, divisi_map: dict) -> str:
     """Kolom divisi di tabel Surat Tugas.
@@ -778,7 +779,7 @@ with tab3:
                         data_visum = {
                             "nomor":            v["nomor_visum"],
                             "tanggal":          datetime.strptime(v["tanggal_visum"], "%Y-%m-%d").date() if v.get("tanggal_visum") else date.today(),
-                            "nama_pegawai":     peserta_pdf[0]["nama"].title() if peserta_pdf else "-",
+                            "nama_pegawai":     smart_title(peserta_pdf[0]["nama"]) if peserta_pdf else "-",
                             "jabatan":          format_jabatan_divisi(peserta_pdf[0]["jabatan"], peserta_pdf[0]["divisi"]) if peserta_pdf else "-",
                             "maksud":           v.get("keperluan", ""),
                             "alat_angkutan":    "Umum",
@@ -788,7 +789,7 @@ with tab3:
                             "tgl_berangkat":    datetime.strptime(v["tanggal_berangkat"], "%Y-%m-%d").date(),
                             "tgl_kembali":      datetime.strptime(v["tanggal_kembali"],   "%Y-%m-%d").date(),
                             "peserta_ikut":     [
-                                f"{p['nama'].title()} ({jab})" if (jab := format_jabatan_divisi(p['jabatan'], p['divisi'])) else p['nama'].title()
+                                f"{smart_title(p['nama'])} ({jab})" if (jab := format_jabatan_divisi(p['jabatan'], p['divisi'])) else smart_title(p['nama'])
                                 for p in peserta_pdf[1:]
                             ],
                             "ttd_nama":         "Dr. SAHARUDDIN, M.M.",
@@ -816,7 +817,7 @@ with tab3:
                         ),
                             "peserta":  [
                                 {
-                                    "nama":    pegawai_map[pid]["nama"].title(),
+                                    "nama":    smart_title(pegawai_map[pid]["nama"]),
                                     "nip":     "" if (
                                         (pegawai_map[pid].get("jabatan") or {}).get("nama", "").upper().startswith("TAMU")
                                         or (pegawai_map[pid].get("jabatan") or {}).get("struktur_rkap", "") in
@@ -891,7 +892,7 @@ with tab3:
                                 div = peg.get("divisi") or {}
                                 # Hitung bidang (cek parent jika divisi sendiri tidak punya bidang)
                                 bidang_raw = div.get("bidang") or divisi_map_local.get(div.get("parent_id"), {}).get("bidang")
-                                bidang_resolved = bidang_raw.title() if bidang_raw else ""
+                                bidang_resolved = smart_title(bidang_raw) if bidang_raw else ""
                                 peserta_spd_raw.append({
                                     "nama":           peg.get("nama", "-"),
                                     "jabatan":        "" if (jab.get("nama") or "").upper().startswith("TAMU") else jab.get("nama", "-"),
@@ -909,7 +910,7 @@ with tab3:
                             peserta_spd = [
                                 {
                                     "no":          i,
-                                    "nama":        p["nama"].title(),
+                                    "nama":        smart_title(p["nama"]),
                                     "jabatan":     format_jabatan_divisi(p["jabatan"], p["divisi_nama"]),
                                     "biaya":       p["biaya"],
                                     "kategori_no": _struktur_ke_kategori_spd(p["struktur_rkap"], p["bidang"]),

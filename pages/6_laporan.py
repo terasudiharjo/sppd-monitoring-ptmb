@@ -11,6 +11,7 @@ from utils.database import (
     get_sppd_realisasi_laporan,
     get_rekap_perjalanan,
     get_pegawai_by_jabatan_nama,
+    smart_title,
 )
 from utils.pdf_generator import (
     generate_laporan_realisasi,
@@ -87,8 +88,8 @@ with tab1:
                             "Uraian": v.get("keperluan",""),
                             "Kota": v.get("tujuan",""),
                             "No. SPD": v.get("nomor_spd",""),
-                            "Nama": (row.get("nama","") or "").title(),
-                            "Jabatan": (row.get("jabatan","") or "").title(),
+                            "Nama": smart_title(row.get("nama","") or ""),
+                            "Jabatan": smart_title(row.get("jabatan","") or ""),
                             "No. Voucher": row.get("nomor_voucher","") or "-",
                             "SPPD": row.get("uang_saku", 0),
                             "Tiket": row.get("tiket", 0),

@@ -4,10 +4,24 @@ excel_generator.py - SPPD PTMB Balikpapan
 Generate file Excel (.xlsx) untuk laporan perjalanan dinas.
 """
 
+import re
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
 from openpyxl.utils import get_column_letter
+
+_ROMAN_RE = re.compile(
+    r'^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$'
+)
+
+def smart_title(s: str) -> str:
+    """str.title() tapi angka Romawi (I, II, III, IV, ...) tetap kapital semua."""
+    if not s:
+        return s
+    def _fix(w):
+        u = w.upper()
+        return u if u and _ROMAN_RE.match(u) else w
+    return " ".join(_fix(w) for w in s.title().split())
 
 BULAN_ID = {
     1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
@@ -96,8 +110,8 @@ def generate_excel_realisasi(groups: list, bulan: int, tahun: int) -> BytesIO:
                 uraian,
                 kota,
                 no_spd,
-                (sppd.get("nama") or "").title(),
-                (sppd.get("jabatan") or "").title(),
+                smart_title(sppd.get("nama") or ""),
+                smart_title(sppd.get("jabatan") or ""),
                 sppd.get("nomor_voucher") or "",
                 sppd.get("uang_saku", 0),
                 sppd.get("tiket", 0),

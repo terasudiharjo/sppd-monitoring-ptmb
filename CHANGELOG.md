@@ -4,6 +4,32 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-23 (lanjutan 2)
+
+**Fix: Angka Romawi di nama jabatan tampil benar (tidak di-lowercase) (`utils/database.py`, `utils/pdf_generator.py`, `utils/excel_generator.py`, `pages/2_visum.py`, `pages/3_sppd.py`, `pages/6_laporan.py`):**
+1. Root cause: `.title()` bawaan Python mengubah "III" → "Iii", "IV" → "Iv", dst. Terjadi di semua titik formatting nama/jabatan.
+2. Fix: tambah fungsi `smart_title(s)` — sama seperti `.title()` tapi setiap kata yang merupakan angka Romawi valid (I, II, III, IV, V, …) dikembalikan ke huruf kapital semua. Fungsi didefinisikan di `database.py` (import ke pages) dan lokal di `pdf_generator.py` + `excel_generator.py` (keduanya standalone, tidak import database).
+3. Semua pemanggilan `.title()` pada field nama dan jabatan diganti ke `smart_title()` — 17 titik di 6 file.
+
+**Fitur: Status pembayaran hotel di PDF realisasi (`pages/3_sppd.py`, `utils/pdf_generator.py`):**
+4. Kolom baru `sppd.hotel_keterangan TEXT NULL` — nilai: `NULL` (kosong), `'sudah_dibayar'`, `'belum_dibayar'`.
+5. Di form realisasi (setelah input biaya hotel), tambah radio horizontal 3 pilihan: "— (tanpa keterangan)" | "(sudah dibayar)" | "(belum dibayar)". Nilai disimpan ke DB saat "Simpan Realisasi".
+6. PDF Tanda Terima Realisasi: label "Biaya Penginapan" berubah jadi "Biaya Penginapan (sudah dibayar)" / "Biaya Penginapan (belum dibayar)" sesuai pilihan — default tetap "Biaya Penginapan" kalau kosong.
+7. PDF Pernyataan Biaya Riil: idem, field "Biaya Penginapan" baris 2 ikut menampilkan keterangan yang sama.
+8. Re-download PDF (status realisasi/completed) otomatis memakai keterangan yang tersimpan di DB.
+
+---
+
+## Sesi 2026-06-23 (lanjutan)
+
+**Fix data: koreksi anggaran_terpakai RKAP Mei 2026 akibat perubahan status Bobby Wira Sakti (`check/fix_bobby_rkap_terpakai.py`):**
+1. Root cause: Bobby sebelumnya PKWT, lalu naik jadi staf tetap. Saat pencairan, deduct masuk ke `bantuan_sppd`. Setelah rkap_id SPPD-nya diupdate ke `TEKNIK_STAF_PELAKSANA`, delta realisasi Rp 540.000 terlanjur ke-deduct ke baris bantuan_sppd (salah row).
+2. Dampak: `bantuan_sppd` (Dalam Kaltim, Mei) kelebihan Rp 540.000; `TEKNIK_STAF_PELAKSANA` (Dalam Kaltim, Mei) kekurangan Rp 540.000. Total grand total tetap benar.
+3. Fix: geser Rp 540.000 dari `bantuan_sppd` ke `TEKNIK_STAF_PELAKSANA` via update langsung `anggaran_terpakai` + `anggaran_sisa` di tabel `rkap` (RKAP ID bantuan: `79d3882a`, TEKNIK_STAF: `70d1c167`).
+4. Script diagnostik baru: `check/cek_mei_discrepancy.py` dan `check/cek_mei_rkap_table.py` untuk deteksi mismatch serupa di bulan lain.
+
+---
+
 ## Sesi 2026-06-23
 
 **Fitur: Breakdown anggaran per kelompok di RKAP Monitor (`pages/4_rkap_monitor.py`):**

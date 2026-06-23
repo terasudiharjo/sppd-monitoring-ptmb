@@ -2,6 +2,20 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import date
 import os
+import re
+
+_ROMAN_RE = re.compile(
+    r'^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$'
+)
+
+def smart_title(s: str) -> str:
+    """str.title() tapi angka Romawi (I, II, III, IV, ...) tetap kapital semua."""
+    if not s:
+        return s
+    def _fix(w):
+        u = w.upper()
+        return u if u and _ROMAN_RE.match(u) else w
+    return " ".join(_fix(w) for w in s.title().split())
 
 load_dotenv()
 
@@ -1388,7 +1402,7 @@ def update_rekap_spd(spd_id: str):
             div_id = s["pegawai"]["divisi_id"]
             div = divisi_map.get(div_id, {})
             bidang_raw = div.get("bidang") or divisi_map.get(div.get("parent_id"), {}).get("bidang")
-            bidang = bidang_raw.title() if bidang_raw else None
+            bidang = smart_title(bidang_raw) if bidang_raw else None
         except:
             pass
 
