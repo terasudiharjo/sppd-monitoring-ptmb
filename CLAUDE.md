@@ -1,5 +1,15 @@
 # CLAUDE.md — Aplikasi Monitoring SPPD PTMB Balikpapan
 
+## ⚠️ Aturan Update Dokumentasi (WAJIB diikuti tiap sesi)
+
+- **CHANGELOG.md** = tempat catat histori. Tiap selesai sesi, tambah entri baru **di paling atas** dengan format `## Sesi YYYY-MM-DD` lalu poin-poin perubahan (apa yang diubah, file mana, kenapa).
+- **CLAUDE.md** = HANYA untuk state operasional **saat ini** (struktur folder, skema tabel, daftar fungsi, alur bisnis, keputusan desain yang masih berlaku). **JANGAN** tambah blok "✅ Selesai sesi tanggal X" di sini — itu tempatnya di CHANGELOG.md.
+- Kalau ada fitur baru/berubah yang sifatnya **permanen** (bukan one-time fix) → update bagian terkait langsung di CLAUDE.md (misal: tambah baris di daftar fungsi, update skema kolom, coret item di "Status Pending").
+- One-time fix script / bug fix data spesifik (misal koreksi data satu orang/satu visum) → **cukup** di CHANGELOG.md saja, tidak usah masuk CLAUDE.md.
+- Di akhir sesi, kalau user belum minta, tetap ingatkan: "mau aku catat perubahan sesi ini ke CHANGELOG.md?"
+
+---
+
 ## Gambaran Umum Project
 
 Aplikasi web **Streamlit** untuk mengelola perjalanan dinas (SPPD) di Perumda Tirta Manuntung Balikpapan (PTMB).
@@ -150,87 +160,6 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 4. **Realokasi RKAP** — ✅ Fitur lengkap & diterima (sesi 2026-06-09). Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
 5. **Nomor otomatis Pernyataan Biaya Riil** — nomor urut masih dikosongkan (diisi manual). Format suffix sudah tampil otomatis: `Nomor : ___/1421002/10a-I/II/2026` (garis kosong 2.5cm untuk nomor urut, diambil dari nomor SPD). Rencana lanjutan: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate nomor urut sequential saat SPPD masuk status `realisasi`, kirim ke `nomor_surat` di `pb_data` → PDF otomatis tampil lengkap.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
-
-### ✅ Selesai sesi 2026-06-19:
-- **Fix bug Pool Distribusi RKAP — spinner hari retain session state** (`pages/4_rkap_monitor.py`): spinner `rlk_pool_add_hari` di Step 2 Pool tidak reset saat destinasi/basis rate berubah karena Streamlit hanya pakai parameter `value=` pada render pertama; nilai lama bisa tertahan dari sesi sebelumnya. Fix: tracking `_pool_rate_key_prev` di session state — setiap kali ID rate row berubah (destinasi atau basis berubah), `rlk_pool_add_hari` di-reset ke `max(min_hari_lokasi, 4)`.
-- **Tambah display total rupiah di Pool Distribusi** (`pages/4_rkap_monitor.py`): setelah tiga kolom (hari, trip, info), sekarang muncul kotak info biru `"Total: N trip × Rp X/trip = Rp Y"` sebelum tombol "➕ Tambah Tujuan" — user bisa verifikasi angka sebelum klik.
-- **Pernyataan Biaya: format nomor partial** (`pages/3_sppd.py`, `utils/pdf_generator.py`): PDF sekarang tampil `Nomor : ___/1421002/10a-I/II/2026` (garis kosong 2.5cm untuk nomor urut, diisi tangan; suffix format diambil otomatis dari nomor SPD terkait). Backward compatible: jika `nomor_surat_suffix` tidak ada → tetap tampil garis panjang 6.5cm seperti sebelumnya.
-- **Visum PDF: urutan peserta context-aware** (`pages/2_visum.py`): sort peserta berdasarkan kehadiran Dewas — (1) Ada Ketua Dewas → Ketua Dewas > Anggota Dewas > Dirut > Direktur Bidang > Manajer > SPV > Staf; (2) Hanya Anggota Dewas → Dirut > Anggota Dewas > Direktur Bidang > Manajer > SPV > Staf; (3) Tanpa Dewas → Dirut > Direktur Bidang > Manajer > SPV > Staf. Menggunakan `struktur_rkap` dari jabatan (bukan `level` saja) agar aturan Dewas bisa ditangani eksplisit. Dalam satu tier, tiebreaker tetap `-level` lalu NIP.
-
-### ✅ Selesai sesi 2026-06-18:
-- **Cancel SPPD completed** (`pages/3_sppd.py`): expander konfirmasi "⚠️ Cancel SPPD Completed (koreksi data)" muncul di bawah status completed. Rollback menggunakan `total_biaya` (bukan `subtotal_uang_saku`) karena "Simpan Realisasi" menyimpan seluruh biaya riil ke RKAP via delta.
-- **Fungsi baru `update_tanggal_visum(visum_id, tgl_visum, tgl_berangkat, tgl_kembali)`** (`utils/database.py`): update tabel visum + propagate perubahan tanggal ke semua SPPD non-cancelled yang tidak punya `tanggal_berangkat_custom`. Recalc `total_hari` + uang saku per SPPD; adjust RKAP (rollback lama + deduct baru, pindah `rkap_id` jika bulan berubah). Includes completed SPPDs. Respects `tanpa_uang_saku` (total_hari diupdate, uang saku tetap 0). Returns `{"success", "pesan", "n_updated", "n_skip", "detail"}`.
-- **Edit Tanggal Visum propagate ke SPPD** (`pages/2_visum.py`): form "Edit Tanggal Visum" kini memanggil `update_tanggal_visum()` — SPPD di dalam visum otomatis di-recalc durasi hari + uang saku + RKAP. Menampilkan preview `{hari_lama} → {lama_preview} hari` sebelum simpan. Pesan sukses mencantumkan n_updated dan n_skip.
-- **Realokasi RKAP: rate dari tujuan** (`pages/4_rkap_monitor.py`): rate/trip sekarang dihitung dari **tujuan** (default). Toggle "Basis rate trip: Tujuan | Sumber" tersedia di setiap move. Label mode trip diubah dari "Trip (estimasi Staf Pelaksana)" → "Trip (hitung per trip)".
-- **Pool & Distribusi multi-sumber → multi-tujuan** (`pages/4_rkap_monitor.py`): expander baru 3 langkah — (1) multiselect sumber RKAP (tampil sisa per opsi + total pool), (2) list tujuan dinamis masing-masing dengan mode Trip/Nominal + hari; tujuan trip punya toggle basis rate Tujuan/Sumber; tampil sisa saat ini per tujuan; (3) greedy distribute: drain sumber terkecil dulu, isi tujuan berurutan — preview matrix Dari×Ke + tabel sisa sumber + tombol commit. Semua move dihasilkan sebagai `mode="nominal"`.
-
-### ✅ Selesai sesi 2026-06-16:
-- **Fix bug `update_tujuan_visum`** (`utils/database.py`): saat tujuan visum berubah lokasi (misal Luar→Dalam Kaltim), SPPD berstatus `draft` tidak di-update `rkap_id`-nya — hanya `lokasi_id` dan uang saku yang berubah. Akibatnya saat pencairan deduct ke bucket lokasi lama. Fix: branch `elif sppd["status"] == "draft"` ditambah untuk update pointer `rkap_id` ke lokasi baru (tanpa rollback/deduct karena draft belum deduct).
-- **Script diagnostik `check/cek_dewas_rkap.py`**: audit `struktur_rkap` jabatan DEWAS, cek baris RKAP kategori DEWAS*, dan trace ke mana tiap SPPD Dewas aktif ter-deduct. Berguna deteksi mismatch `lokasi_id` vs `rkap_id`.
-- **Script fix data `check/fix_dewas_rkap_visum0055.py`**: koreksi 3 SPPD Dewas (Ketua/1/2) Visum 0055 Samarinda yang salah deduct ke Luar Kaltim. DRY_RUN=True → preview dulu, False → eksekusi. **✅ Sudah dijalankan** — Script dikembalikan ke DRY_RUN=True.
-- **UI minor dropdown Realokasi RKAP** (`pages/4_rkap_monitor.py`): urutan dropdown Sumber & Tujuan: Kategori (Dewas→Dirut→Direksi→dst) → Lokasi (Dalam→Luar→LN) → Bulan (Jan–Des). Baris dengan efektif sisa negatif ditandai prefix `🔴` di dropdown.
-- **Fitur Mode Nominal Langsung untuk Bantuan** (`pages/4_rkap_monitor.py`): jika sumber atau tujuan adalah `bantuan_sppd`/`bantuan_sppd_luar_negeri`, muncul radio button mode "Trip (estimasi Staf Pelaksana)" vs "Nominal Langsung". Mode nominal: input Rupiah langsung tanpa hitung trip — berguna karena anggaran bantuan angka bulat yang tidak bisa dibagi habis per trip. Juga membuka realokasi `bantuan_sppd_luar_negeri` yang sebelumnya disabled (rate LN = 0).
-
-### ✅ Selesai sesi 2026-06-15:
-- **Realokasi RKAP multi-pasang** (`pages/4_rkap_monitor.py` + `utils/database.py`): satu batch sekarang bisa berisi banyak pasang (dari→ke) yang berbeda-beda tujuan. Fungsi baru `eksekusi_realokasi_multi(moves, keterangan, tanggal)` — validasi aggregate per sumber, hitung net delta per rkap_id, satu `batch_id` bersama.
-- **UI Tab 4 revamp**: form tambah move baru pilih Sumber + Tujuan sekaligus (bukan multi-sumber → 1 tujuan); hari/trip bisa beda per move (default = MIN_HARI_LOKASI sumber); effective sisa di kedua selectbox sudah memperhitungkan moves yang sudah di-queue dalam batch yang sama.
-- **Preview pivot sebelum/sesudah**: tabel Jan–Des untuk semua kategori+lokasi yang terdampak, dua tabel (Sebelum & Sesudah).
-- **Perbandingan per Triwulan/Semester**: radio button TW/Semester → dua tabel perbandingan: (1) Anggaran Sebelum vs Sesudah per periode, (2) Sisa Sebelum vs Sesudah per periode. Ikon 🟢/🔴 untuk naik/turun, 🚨 untuk sisa minus.
-- **Draft realokasi persisten** (`rkap_realokasi_draft` di Supabase): tabel baru `rkap_realokasi_draft(id, nama, tahun, keterangan, moves jsonb, created_at, updated_at)`. Fungsi baru `simpan_draft_realokasi`, `get_draft_list_realokasi`, `hapus_draft_realokasi`. UI: panel "📂 Draft Tersimpan" (muat/hapus), input nama draft, tombol "💾 Simpan Draft" → setelah finalisasi draft aktif otomatis dihapus.
-- **Riwayat realokasi**: kolom "Ke" ditambah di detail expander; summary batch multi-destination tampil "X tujuan berbeda".
-- **Fix Tab 3 "Detail per Bulan" — SPPD draft tidak mencerminkan terpakai** (`pages/4_rkap_monitor.py`): sebelumnya detail penggunaan menampilkan semua SPPD non-cancelled termasuk `draft`, sehingga tampak ada pemakaian di detail padahal kolom "Terpakai" di tabel tetap 0. Fix: SPPD `draft` sekarang tampil dengan label `⏳ DRAFT*` di kolom Status; grand total caption hanya menghitung pencairan/realisasi/completed (konsisten dengan `anggaran_terpakai`); catatan otomatis muncul jika ada draft: _"X SPPD masih DRAFT — belum deduct RKAP (estimasi: Rp ...)"_.
-
-### ✅ Selesai sesi 2026-06-09:
-- **Tambah kolom No. Visum & No. SPD di tabel dashboard**: `pages/1_dashboard.py` — tabel "SPPD Aktif" dan "Menunggu Realisasi" sekarang menampilkan dua kolom baru di posisi paling kiri: `No. Visum` (urutan visum, misal `0049`) dan `No. SPD` (urutan SPD, misal `034`). Data diambil via join `visum(nomor_visum)` dan `spd(nomor_spd)` pada query sppd. Helper `_urutan(nomor)` ekstrak bagian sebelum `/` pertama.
-- **Perbaikan UI Tab 4 Realokasi RKAP** (`pages/4_rkap_monitor.py`):
-  - **Ringkasan Saldo per Triwulan (pivot table)**: tabel kompak per baris Kategori+Lokasi, 4 kolom TW I–IV, sisa ditampilkan 🚨 (minus) / 🟢 (surplus). Expander per TW untuk lihat detail per bulan.
-  - **Snapshot/historis view**: selectbox "Lihat kondisi anggaran:" dengan pilihan `Anggaran Awal | Setelah Perubahan 1 | ... | Kondisi Saat Ini`. Merekonstruksi `anggaran_awal` dari `anggaran_pagu` + audit trail `rkap_realokasi` tanpa mengubah data. Berguna untuk presentasi ke keuangan.
-  - **Riwayat Realokasi**: tabel ringkas (Tanggal | Dari | Ke | Total Pindah | Keterangan) langsung visible, detail trip/rate di expander collapsed.
-- **Script `check/fix_reset_realokasi_batch.py`**: hard reset satu batch realokasi — reversal `anggaran_awal` + `anggaran_sisa` di row yang tersentuh + hapus record dari `rkap_realokasi`. Set `BATCH_NUMBER` (atau `BATCH_ID`) + `DRY_RUN=False` untuk eksekusi.
-
-### ✅ Selesai sesi 2026-06-03:
-- **Tampilkan nomor SPD di selectbox pilih visum (Tab Detail & Edit)**: `pages/2_visum.py` — label selectbox sekarang menyertakan nomor SPD singkat, format `- SPD.034`. Data diambil dari `sppd.nomor_sppd` (query sekali, build dict `visum_id → nomor_spd`). Visum `tanpa_spd=True` tampil `- Tanpa SPD`. Visum tanpa SPPD (belum pencairan) tidak ada suffix.
-
-### ✅ Selesai sesi 2026-06-02:
-- **Fix teks PDF permintaan biaya untuk RKAP bantuan**: `pdf_generator.py` baris 1309 — kalau `is_bantuan=True`, teks sekarang berbunyi "sesuai permintaan biaya bantuan no. {nomor_spd}" (sebelumnya tidak ada kata "bantuan").
-- **Fix kalkulasi nilai/trip realokasi RKAP**: `get_all_rule_rates()` di `utils/database.py` sekarang fetch semua komponen — `uang_saku`, `uang_makan`, `transport_lokal`, `uang_representasi`, `plafon_pesawat`, `plafon_hotel`. Formula nilai/trip di Tab Realokasi RKAP (`pages/4_rkap_monitor.py`) diubah menjadi: `(uang_saku + uang_makan + transport_lokal + uang_representasi) × hari + plafon_pesawat × 2 + plafon_hotel × (hari - 1)`. Sebelumnya hanya pakai `uang_saku` saja. UI kini tampilkan breakdown per komponen. Hanya Direktur Utama (Rp 250rb/hari) dan Direktur Bidang (Rp 150rb/hari) yang punya `uang_representasi > 0`.
-
-### ✅ Selesai sesi 2026-05-29:
-- **Script fix_bobby_rkap_visum0054.py**: Pindah RKAP Bobby Wira Sakti (Visum 0054) dari bucket `bantuan_sppd` → `TEKNIK_STAF_PELAKSANA` Mei 2026. SPPD dibuat waktu jabatan masih STAF PKWT, padahal Bobby sudah naik jadi STAF PELAKSANA (bidang Teknik). Tarif uang saku tidak berubah (Rp 1.650.000), hanya rkap_id dipindah. **✅ sudah dijalankan**.
-
-### ✅ Selesai sesi 2026-05-26:
-- **Tanpa Uang Saku per SPPD**: kolom baru `sppd.tanpa_uang_saku BOOLEAN DEFAULT FALSE`. Expander "✏️ Uang Saku" di Tab 2 SPPD, tersedia semua jabatan s/d status `realisasi`. Toggle ON → zero out semua komponen uang saku + rollback RKAP jika pencairan. Toggle OFF → recalc dari rule + deduct RKAP jika pencairan. `var_costs` (hotel + transport + biaya lain) tidak tersentuh. Fungsi baru `update_tanpa_uang_saku(sppd_id, enabled)` di `utils/database.py`.
-- **Script fix_uncancel_visum.py**: Un-cancel visum beserta semua SPPD-nya. `TARGET_STATUS_SPPD = "draft"` disarankan (lanjutkan pencairan manual via UI). DRY_RUN=True dulu untuk preview.
-
-### ✅ Selesai sesi 2026-05-21:
-- **Script fix_uncomplete_sppd.py**: Un-complete SPPD (`completed → realisasi`). Murni ganti status, tanpa menyentuh RKAP. Set `NAMA_PEGAWAI_PATTERN` + `DRY_RUN=False` untuk eksekusi. **✅ sudah dijalankan** (fix SPPD Yuniati yang tidak sengaja ter-complete).
-- **Edit Tujuan & Keperluan Visum**: Expander "✏️ Edit Tujuan & Keperluan" di Tab Detail & Edit Visum (tersedia untuk semua status kecuali cancelled). Jika hanya keperluan yang berubah → simple update visum. Jika tujuan berubah → semua SPPD non-cancelled diupdate `lokasi_id` + recalc uang saku dari rule baru + RKAP rollback lama & deduct ke bucket lokasi baru (termasuk SPPD status completed). Respects `tanggal_berangkat_custom` per SPPD untuk resolve bulan RKAP. Fungsi baru `update_tujuan_visum(visum_id, tujuan_baru, keperluan_baru)` di `utils/database.py`.
-
-### ✅ Selesai sesi 2026-05-11:
-- **Un-cancel SPPD Ganden Aditera Ismed**: script `check/fix_uncancel_sppd_ganden.py` — SPPD tidak sengaja di-cancel dari status `pencairan` (Visum 0049, SPD 34); script ubah status kembali ke `pencairan` + re-deduct RKAP + update rekap SPD; **✅ sudah dijalankan**.
-- **Nomor Pernyataan Biaya dikosongkan (manual)**: `nomor_surat` di `pb_data` (`3_sppd.py`) diset `""`. PDF (`pdf_generator.py` `_draw_pernyataan`) — kalau nomor kosong, tampilkan garis bawah ~6.5cm untuk diisi tangan; kalau nomor terisi, tampilkan teks seperti biasa. Roadmap auto-nomor: lihat item 9 di "Belum dikerjakan".
-- **Header SPPD Bantuan/PKWT/Tamu**: PDF header sekarang dinamis — `is_bantuan=True` → sisipkan kata "Bantuan" di header; `STAF PKWT` → format "Staf PKWT {divisi}"; Tamu → pakai `jabatan_dokumen` (tanpa suffix PTMB). Kolom baru `jabatan_dokumen TEXT NULL` di tabel `sppd` (jalankan SQL: `ALTER TABLE sppd ADD COLUMN IF NOT EXISTS jabatan_dokumen TEXT NULL`). UI: expander "✏️ Jabatan Dokumen (Tamu)" muncul untuk jabatan TAMU* di Tab 2 SPPD. Fungsi baru `update_jabatan_dokumen_sppd()` di `utils/database.py`.
-
-### ✅ Selesai sesi 2026-05-06:
-- **Custom tanggal per SPPD**: kolom `tanggal_berangkat_custom` + `tanggal_kembali_custom` (nullable) di tabel `sppd`. Expander "✏️ Edit Tanggal SPPD" di Tab 2 SPPD, bisa diedit s/d status realisasi. Recalc uang saku otomatis, RKAP di-rollback & deduct ulang (pindah rkap_id jika bulan berubah). Semua PDF (pencairan, realisasi, pernyataan biaya) pakai tanggal efektif per orang.
-- Fungsi baru `update_tanggal_sppd_custom()` di `utils/database.py`
-
-### ✅ Selesai sesi 2026-04-30:
-- **Fix bug `rollback_rkap`**: hapus `max(..., 0)` yang menyebabkan inkonsistensi `terpakai + sisa ≠ anggaran_awal` jika rollback > terpakai
-- **Fix bug `recalculate_sppd`**: tambah `total_biaya` ke select query; preservasi var costs (hotel + transport + biaya lain) saat recalculate uang saku — bukan hanya hotel
-- **Fix bug `fix_sppd_realisasi.py`**: sama — var costs dipertahankan dengan formula `var_costs = total_biaya_lama - uang_saku_lama`
-- **Tambah detail SPPD per bulan di RKAP Monitor Tab 3**: selectbox pilih bulan → tampil tabel siapa yang berangkat, kemana, pakai anggaran berapa (query by `rkap_id`)
-- **Fix script `cek_rkap_vs_sppd.py`**: exclude SPPD status DRAFT dari perbandingan (DRAFT belum deduct RKAP, sebelumnya dihitung sebagai error)
-- **Script diagnostik baru**: `check/investigasi_bantuan_maret.py` — investigasi targeted selisih RKAP vs SPPD
-- **Script fix data**: `check/fix_indrastiti_total_biaya.py` — koreksi `total_biaya` INDRASTITI yang kehilangan transport setelah koreksi tarif staf → spv; **✅ sudah dijalankan** — `total_biaya` Rp 6.400.000 → Rp 9.377.000, data DB sudah benar
-- **Script diagnostik baru**: `check/cek_sppd_bulan_rkap.py` — deteksi SPPD yang `rkap_id`-nya mengarah ke bulan RKAP berbeda dari bulan berangkat visum (jalankan dengan `PYTHONIOENCODING=utf-8`)
-- **Script fix data**: `check/fix_visum0028_rkap_bulan.py` — pindah deduct Visum 0028 Bali (FALIQ + Supriadi) dari RKAP April ke RKAP Maret yang benar; total Rp 21.569.800 dipindah; **✅ sudah dijalankan** — terverifikasi bersih dengan `cek_sppd_bulan_rkap.py`
-- **Realokasi RKAP** (⚠️ pending review user): Tab 4 baru di RKAP Monitor + fungsi database. Detail: lihat CHANGELOG sesi 2026-04-30 dan bagian "Keputusan Desain - Realokasi RKAP"
-
-### ✅ Selesai sesi 2026-04-29:
-- Rename jabatan `CALON PEGAWAI` → `STAF PKWT` (di Supabase + mapping kode)
-- Fix tanggal Visum Lembaran II kolom kiri ("Tiba pada tanggal" pakai tgl berangkat)
-- Edit NIP pegawai saat naik jabatan dari PKWT di halaman Edit Pegawai
 
 ---
 

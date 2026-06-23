@@ -4,6 +4,15 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-23
+
+**Fitur: Breakdown anggaran per kelompok di RKAP Monitor (`pages/4_rkap_monitor.py`):**
+1. Tambah tabel "Rincian per kelompok" di bawah KPI cards — 3 baris vertikal: Non-Bantuan | Bantuan SPPD | Bantuan SPPD LN, masing-masing menampilkan Anggaran / Terpakai / Sisa / % Terpakai.
+2. Tambah tabel "Rekap per Kelompok" di Tab 1 (Tabel Summary) setelah tabel utama — 6 baris: Dewas, Direksi, Administrasi, Teknik, Bantuan SPPD, Bantuan SPPD LN, ditutup baris TOTAL. Administrasi dan Teknik dipisah row masing-masing (tidak digabung).
+3. Semua perubahan murni display — tidak menyentuh logika kalkulasi, query database, atau alur deduct/rollback RKAP.
+
+---
+
 ## Sesi 2026-06-19
 
 **Fix: Bug spinner hari di Pool Distribusi RKAP (`pages/4_rkap_monitor.py`):**

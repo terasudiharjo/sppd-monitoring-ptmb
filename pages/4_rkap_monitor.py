@@ -235,10 +235,22 @@ def main():
         return
 
     # ── KPI cards ───────────────────────────────────
+    KAT_BANTUAN = {"bantuan_sppd", "bantuan_sppd_luar_negeri"}
+    df_bantuan     = df_agg[df_agg["kategori_jabatan"].isin(KAT_BANTUAN)]
+    df_non_bantuan = df_agg[~df_agg["kategori_jabatan"].isin(KAT_BANTUAN)]
+
     total_awal     = df_agg["anggaran_awal"].sum()
     total_terpakai = df_agg["anggaran_terpakai"].sum()
     total_sisa     = df_agg["anggaran_sisa"].sum()
     pct_global     = (total_terpakai / total_awal * 100) if total_awal > 0 else 0
+
+    ban_awal     = df_bantuan["anggaran_awal"].sum()
+    ban_terpakai = df_bantuan["anggaran_terpakai"].sum()
+    ban_sisa     = df_bantuan["anggaran_sisa"].sum()
+
+    non_awal     = df_non_bantuan["anggaran_awal"].sum()
+    non_terpakai = df_non_bantuan["anggaran_terpakai"].sum()
+    non_sisa     = df_non_bantuan["anggaran_sisa"].sum()
 
     label_periode = mode if mode == "Tahunan" else f"{mode} – {pilihan_periode}"
     st.markdown(f"**Periode:** {label_periode} &nbsp;|&nbsp; **Tahun:** {tahun}")
@@ -248,6 +260,27 @@ def main():
     col2.metric("✅ Terpakai", format_rp(total_terpakai))
     col3.metric("💵 Sisa", format_rp(total_sisa))
     col4.metric("📊 % Terpakai", f"{pct_global:.1f}%")
+
+    st.markdown("**Rincian per kelompok:**")
+
+    df_ban_dalam = df_agg[df_agg["kategori_jabatan"] == "bantuan_sppd"]
+    df_ban_ln    = df_agg[df_agg["kategori_jabatan"] == "bantuan_sppd_luar_negeri"]
+
+    ban_dalam_awal     = df_ban_dalam["anggaran_awal"].sum()
+    ban_dalam_terpakai = df_ban_dalam["anggaran_terpakai"].sum()
+    ban_dalam_sisa     = df_ban_dalam["anggaran_sisa"].sum()
+    ban_ln_awal        = df_ban_ln["anggaran_awal"].sum()
+    ban_ln_terpakai    = df_ban_ln["anggaran_terpakai"].sum()
+    ban_ln_sisa        = df_ban_ln["anggaran_sisa"].sum()
+
+    def _pct(t, a): return f"{t/a*100:.1f}%" if a > 0 else "—"
+
+    rincian_rows = [
+        {"Kelompok": "Non-Bantuan",            "Anggaran": format_rp(non_awal),      "Terpakai": format_rp(non_terpakai),      "Sisa": format_rp(non_sisa),      "% Terpakai": _pct(non_terpakai, non_awal)},
+        {"Kelompok": "Bantuan SPPD",           "Anggaran": format_rp(ban_dalam_awal), "Terpakai": format_rp(ban_dalam_terpakai), "Sisa": format_rp(ban_dalam_sisa), "% Terpakai": _pct(ban_dalam_terpakai, ban_dalam_awal)},
+        {"Kelompok": "Bantuan SPPD LN",        "Anggaran": format_rp(ban_ln_awal),   "Terpakai": format_rp(ban_ln_terpakai),   "Sisa": format_rp(ban_ln_sisa),   "% Terpakai": _pct(ban_ln_terpakai, ban_ln_awal)},
+    ]
+    st.dataframe(pd.DataFrame(rincian_rows), use_container_width=True, hide_index=True)
 
     # Peringatan over budget
     over_budget = df_agg[df_agg["anggaran_sisa"] < 0]
@@ -296,6 +329,53 @@ def main():
         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
         st.caption("🟢 < 75%  |  🟡 75–90%  |  🔴 90–100%  |  🚨 OVER > 100%  |  * = sudah ada realokasi")
+
+        # ── Subtotal per kelompok ────────────────────────
+        st.markdown("**Rekap per Kelompok:**")
+
+        GRUP_DEF = [
+            ("Dewas",                  ["DEWAS_KETUA", "DEWAS_ANGGOTA_1", "DEWAS_ANGGOTA_2"]),
+            ("Direksi",                ["DIRUT", "DIRUM", "DIRTEK", "DIROPS"]),
+            ("Administrasi",           ["ADM_MANAJER", "ADM_SUPERVISOR", "ADM_STAF_PELAKSANA"]),
+            ("Teknik",                 ["TEKNIK_MANAJER", "TEKNIK_SUPERVISOR", "TEKNIK_STAF_PELAKSANA"]),
+            ("Bantuan SPPD",           ["bantuan_sppd"]),
+            ("Bantuan SPPD LN",        ["bantuan_sppd_luar_negeri"]),
+        ]
+
+        subtotal_rows = []
+        total_grp_awal     = 0
+        total_grp_terpakai = 0
+        total_grp_sisa     = 0
+
+        for label_grp, kat_list in GRUP_DEF:
+            sub = df_agg[df_agg["kategori_jabatan"].isin(kat_list)]
+            if sub.empty:
+                continue
+            g_awal     = sub["anggaran_awal"].sum()
+            g_terpakai = sub["anggaran_terpakai"].sum()
+            g_sisa     = sub["anggaran_sisa"].sum()
+            pct_g      = (g_terpakai / g_awal * 100) if g_awal > 0 else 0
+            subtotal_rows.append({
+                "Kelompok":  label_grp,
+                "Anggaran":  format_rp(g_awal),
+                "Terpakai":  format_rp(g_terpakai),
+                "Sisa":      format_rp(g_sisa),
+                "% Pakai":   f"{pct_g:.1f}%",
+            })
+            total_grp_awal     += g_awal
+            total_grp_terpakai += g_terpakai
+            total_grp_sisa     += g_sisa
+
+        pct_total_grp = (total_grp_terpakai / total_grp_awal * 100) if total_grp_awal > 0 else 0
+        subtotal_rows.append({
+            "Kelompok":  "🔢 TOTAL",
+            "Anggaran":  format_rp(total_grp_awal),
+            "Terpakai":  format_rp(total_grp_terpakai),
+            "Sisa":      format_rp(total_grp_sisa),
+            "% Pakai":   f"{pct_total_grp:.1f}%",
+        })
+
+        st.dataframe(pd.DataFrame(subtotal_rows), use_container_width=True, hide_index=True)
 
     # ── TAB 2: GRAFIK ────────────────────────────────
     with tab2:
