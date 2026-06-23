@@ -4,6 +4,19 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-23 (lanjutan 3)
+
+**Fitur: Rincian hotel per baris di realisasi (`pages/3_sppd.py`, `utils/database.py`, `utils/pdf_generator.py`):**
+1. Tabel baru `sppd_hotel_detail` (id, sppd_id, urutan, uraian, biaya, keterangan TEXT NULL).
+2. Kolom `sppd.hotel_keterangan` (ditambah sesi sebelumnya) di-drop — digantikan oleh keterangan per baris hotel.
+3. Fungsi baru di `database.py`: `save_hotel_detail(sppd_id, items)` dan `get_hotel_detail(sppd_id)` — pola replace (delete all → insert baru), identik dengan `save_biaya_lain`/`save_transport_detail`.
+4. UI form realisasi: section "Biaya Hotel" sekarang multi-baris (uraian | biaya | keterangan | hapus), dengan tombol "➕ Tambah Hotel". Keterangan selectbox: `— (tanpa keterangan)` | `(30% belum dibayar)` | `(sudah dibayar)` | `(belum dibayar)`.
+5. Pre-fill otomatis: jika `menginap = False` dari pencairan dan belum ada detail → isi 1 baris dengan biaya 30%×plafon×hari_tidak_menginap dan keterangan `(30% belum dibayar)`.
+6. PDF Tanda Terima Realisasi: "Biaya Penginapan [total]" sebagai header row, diikuti sub-baris per hotel (uraian + biaya) dengan keterangan dalam **warna merah** di baris bawahnya. Backward compat: jika tidak ada detail, tampil baris tunggal seperti sebelumnya.
+7. Pernyataan Biaya Riil: tetap tampilkan total hotel saja (tidak ada sub-baris).
+
+---
+
 ## Sesi 2026-06-23 (lanjutan 2)
 
 **Fix: Angka Romawi di nama jabatan tampil benar (tidak di-lowercase) (`utils/database.py`, `utils/pdf_generator.py`, `utils/excel_generator.py`, `pages/2_visum.py`, `pages/3_sppd.py`, `pages/6_laporan.py`):**

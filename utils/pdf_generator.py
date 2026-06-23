@@ -1355,6 +1355,18 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
             c.drawRightString(tot_x, y, f"{total:,.0f}".replace(",","."))
         y -= rh
 
+    def hotel_sub_row(uraian, biaya, keterangan):
+        """Sub-baris rincian hotel: uraian+biaya normal, keterangan merah di bawahnya."""
+        nonlocal y
+        item_row("", f"   {uraian}", 1, biaya, biaya)
+        if keterangan:
+            c.setFont(FONT_NORMAL, FONT_SIZE - 1)
+            c.setFillColor(colors.red)
+            c.drawString(ket_x + 0.8*cm, y, keterangan)
+            c.setFillColor(colors.black)
+            c.setFont(FONT_NORMAL, FONT_SIZE)
+            y -= 0.35*cm
+
     lama      = data.get("lama_hari", 0)
     uh        = data.get("uang_harian", 0)
     total_uh  = lama * uh
@@ -1379,10 +1391,15 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         else:
             item_row("3", "Biaya Penginapan")  # kosong kalau menginap (bayar sendiri dulu)
     else:
-        penginapan = data.get("biaya_penginapan_aktual", 0)
-        ket_hotel = data.get("hotel_keterangan") or ""
-        label_penginapan = f"Biaya Penginapan {ket_hotel}".strip()
-        item_row("3", label_penginapan, 1, penginapan, penginapan)
+        hotel_items = data.get("hotel_items", [])
+        if hotel_items:
+            total_h = sum(h.get("biaya", 0) for h in hotel_items)
+            item_row("3", "Biaya Penginapan", None, None, total_h)
+            for h in hotel_items:
+                hotel_sub_row(h.get("uraian", ""), h.get("biaya", 0), h.get("keterangan") or "")
+        else:
+            penginapan = data.get("biaya_penginapan_aktual", 0)
+            item_row("3", "Biaya Penginapan", 1, penginapan, penginapan)
 
     # Uang representasi
     urep = data.get("uang_representasi", 0)
@@ -1613,8 +1630,7 @@ def _draw_pernyataan(c, data):
 
     biaya_row("NO.", "PERINCIAN BIAYA", "REALISASI (RP)", bold=True)
     biaya_row("1.", "Biaya Perjalanan Dinas", fmt_rp2(data.get("biaya_perjalanan",0)))
-    _ket_pb = data.get("hotel_keterangan") or ""
-    biaya_row("2.", f"Biaya Penginapan {_ket_pb}".strip(), fmt_rp2(data.get("biaya_penginapan",0)))
+    biaya_row("2.", "Biaya Penginapan", fmt_rp2(data.get("biaya_penginapan",0)))
     biaya_row("3.", "Biaya Transport",        fmt_rp2(data.get("biaya_transport",0)))
     biaya_row("4.", "Biaya Lain-lain",        fmt_rp2(data.get("biaya_lain",0)))
     biaya_row("",   "JUMLAH",                fmt_rp2(data.get("grand_total",0)), bold=True)

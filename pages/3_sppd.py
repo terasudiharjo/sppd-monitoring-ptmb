@@ -6,6 +6,7 @@ from utils.database import (
     JABATAN_SORT_ORDER, LOKASI_BANTUAN_ID,
     get_plafon_hotel, save_biaya_lain, get_biaya_lain,
     save_transport_detail, get_transport_detail,
+    save_hotel_detail, get_hotel_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
     recalculate_sppd, update_tanggal_sppd_custom, update_jabatan_dokumen_sppd,
     update_tanpa_uang_saku,
@@ -512,7 +513,7 @@ with tab2:
                     real_data = {
                         **base_data,
                         "biaya_penginapan_aktual": s.get("total_hotel", 0),
-                        "hotel_keterangan":        s.get("hotel_keterangan") or "",
+                        "hotel_items":             get_hotel_detail(s["id"]),
                         "items_transport": [
                             {
                                 "keterangan": f"{t['kota_asal']} - {t['kota_tujuan']}"
@@ -564,7 +565,6 @@ with tab2:
                         "tanggal_kembali":        s.get("tanggal_kembali_custom") or visum_data.get("tanggal_kembali"),
                         "biaya_perjalanan":       s.get("subtotal_uang_saku", 0),
                         "biaya_penginapan":       s.get("total_hotel", 0),
-                        "hotel_keterangan":       s.get("hotel_keterangan") or "",
                         "biaya_transport":        s.get("total_transport", 0),
                         "biaya_lain":             max(0, (s.get("total_biaya") or 0) - (s.get("subtotal_uang_saku") or 0) - (s.get("total_hotel") or 0) - (s.get("total_transport") or 0)),
                         "grand_total":            s.get("total_biaya", 0),
@@ -746,68 +746,70 @@ with tab2:
                         total_transport = sum(int(tr.get("biaya_transport", 0)) for tr in tr_items)
                         st.caption(f"Total Transport: **{format_rupiah(total_transport)}**")
 
-                    # Hotel: cek status menginap dari pencairan
-                    menginap_pencairan = s.get("menginap", True)
-                    jabatan_id_pgw = (s.get("pegawai") or {}).get("jabatan_id")
-                    plafon_real = get_plafon_hotel(jabatan_id_pgw, s["lokasi_id"]) if jabatan_id_pgw else 0
-                    max_malam_real = max((s.get("total_hari") or 1) - 1, 0)
-
-                    if not menginap_pencairan:
-                        # Locked: semua tidak menginap sejak pencairan
-                        hari_tdk_db = s.get("hari_tidak_menginap") or max_malam_real  # fallback record lama
-                        total_hotel = int(plafon_real * 0.30 * hari_tdk_db)
-                        hari_tidak_menginap = hari_tdk_db
-                        st.caption(f"Tidak menginap (dari pencairan): {hari_tdk_db} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(total_hotel)}**")
-                    else:
-                        # Toggle aktif: user bisa pilih menginap atau tidak
-                        menginap_real = st.toggle(
-                            "Menginap Hotel",
-                            value=True,
-                            key=f"menginap_real_{s['id']}"
-                        )
-                        if menginap_real:
-                            # Hitung pre-fill biaya aktual = total_hotel_DB − kompensasi 30% sebelumnya
-                            hari_tdk_db = s.get("hari_tidak_menginap") or 0
-                            kompensasi_lama = int(plafon_real * 0.30 * hari_tdk_db)
-                            prefill_aktual = max(0, int(s.get("total_hotel") or 0) - kompensasi_lama)
-
-                            biaya_hotel_aktual = st.number_input(
-                                "Biaya Hotel Aktual (Rp)",
-                                value=prefill_aktual,
-                                step=50000,
-                                key=f"hotel_{s['id']}"
-                            )
-                            hari_tidak_menginap = st.number_input(
-                                "Hari tidak menginap hotel (dapat 30%)",
-                                min_value=0, max_value=max_malam_real,
-                                value=hari_tdk_db, step=1,
-                                key=f"hari_tdk_real_{s['id']}"
-                            )
-                            kompensasi_30pct = int(plafon_real * 0.30 * hari_tidak_menginap)
-                            if hari_tidak_menginap > 0:
-                                st.caption(f"→ {hari_tidak_menginap} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(kompensasi_30pct)}**")
-                            total_hotel = biaya_hotel_aktual + kompensasi_30pct
-                            st.caption(f"Total Hotel: **{format_rupiah(total_hotel)}**")
-                        else:
-                            hari_tidak_menginap = max_malam_real
-                            total_hotel = int(plafon_real * 0.30 * hari_tidak_menginap)
-                            st.caption(f"Tidak menginap: {hari_tidak_menginap} malam × {format_rupiah(plafon_real)} × 30% = **{format_rupiah(total_hotel)}**")
-
-                    # ── Status pembayaran hotel ──
-                    _ket_opts = ["", "sudah_dibayar", "belum_dibayar"]
-                    _ket_labels = {
+                    # ── Rincian Hotel ──
+                    st.markdown("**Biaya Hotel**")
+                    _KET_HOTEL_OPTS = [
+                        "",
+                        "(30% belum dibayar)",
+                        "(sudah dibayar)",
+                        "(belum dibayar)",
+                    ]
+                    _KET_HOTEL_LABELS = {
                         "": "— (tanpa keterangan)",
-                        "sudah_dibayar": "(sudah dibayar)",
-                        "belum_dibayar": "(belum dibayar)",
+                        "(30% belum dibayar)": "(30% belum dibayar)",
+                        "(sudah dibayar)": "(sudah dibayar)",
+                        "(belum dibayar)": "(belum dibayar)",
                     }
-                    hotel_keterangan = st.radio(
-                        "Keterangan pembayaran hotel di PDF",
-                        options=_ket_opts,
-                        format_func=lambda x: _ket_labels[x],
-                        index=_ket_opts.index(s.get("hotel_keterangan") or ""),
-                        horizontal=True,
-                        key=f"hotel_ket_{s['id']}"
-                    )
+
+                    hotel_key = f"hotel_detail_{s['id']}"
+                    if hotel_key not in st.session_state:
+                        existing_hotel = get_hotel_detail(s["id"])
+                        if not existing_hotel:
+                            # Pre-fill dari data pencairan
+                            menginap_pencairan = s.get("menginap", True)
+                            if not menginap_pencairan:
+                                jab_id_pgw = (s.get("pegawai") or {}).get("jabatan_id")
+                                plafon_pre = get_plafon_hotel(jab_id_pgw, s["lokasi_id"]) if jab_id_pgw else 0
+                                hari_tdk = s.get("hari_tidak_menginap") or max((s.get("total_hari") or 1) - 1, 0)
+                                biaya_pre = int(plafon_pre * 0.30 * hari_tdk)
+                                existing_hotel = [{"uraian": "", "biaya": biaya_pre, "keterangan": "(30% belum dibayar)"}]
+                            else:
+                                existing_hotel = [{"uraian": "", "biaya": 0, "keterangan": ""}]
+                        st.session_state[hotel_key] = existing_hotel
+
+                    hotel_items_input = st.session_state[hotel_key]
+                    for i, h in enumerate(hotel_items_input):
+                        col_ur, col_bi, col_kt, col_del = st.columns([4, 2, 3, 0.6])
+                        h["uraian"] = col_ur.text_input(
+                            "Uraian", h.get("uraian", ""),
+                            placeholder="Nama hotel / keterangan",
+                            key=f"h_ur_{s['id']}_{i}", label_visibility="collapsed"
+                        )
+                        bi_val = col_bi.number_input(
+                            "Biaya", value=int(h.get("biaya", 0)),
+                            step=50000, key=f"h_bi_{s['id']}_{i}", label_visibility="collapsed"
+                        )
+                        col_bi.caption(format_rupiah(bi_val))
+                        h["biaya"] = bi_val
+                        cur_ket = h.get("keterangan") or ""
+                        if cur_ket not in _KET_HOTEL_OPTS:
+                            cur_ket = ""
+                        h["keterangan"] = col_kt.selectbox(
+                            "Keterangan", options=_KET_HOTEL_OPTS,
+                            format_func=lambda x: _KET_HOTEL_LABELS[x],
+                            index=_KET_HOTEL_OPTS.index(cur_ket),
+                            key=f"h_kt_{s['id']}_{i}", label_visibility="collapsed"
+                        )
+                        if col_del.button("🗑", key=f"h_del_{s['id']}_{i}") and len(hotel_items_input) > 1:
+                            hotel_items_input.pop(i)
+                            st.rerun()
+
+                    if st.button("➕ Tambah Hotel", key=f"h_add_{s['id']}"):
+                        hotel_items_input.append({"uraian": "", "biaya": 0, "keterangan": ""})
+                        st.rerun()
+
+                    total_hotel = sum(int(h.get("biaya", 0)) for h in hotel_items_input)
+                    st.caption(f"Total Hotel: **{format_rupiah(total_hotel)}**")
 
                     # ── Biaya Lain-lain ──
                     st.markdown("**Biaya Lain-lain**")
@@ -854,6 +856,14 @@ with tab2:
                         )
                         total_transport = sum(int(t["biaya_transport"]) for t in valid_transport)
 
+                        # Simpan rincian hotel
+                        valid_hotel = [
+                            {"uraian": h.get("uraian", ""), "biaya": int(h.get("biaya", 0)), "keterangan": h.get("keterangan") or None}
+                            for h in hotel_items_input if int(h.get("biaya", 0)) > 0
+                        ]
+                        save_hotel_detail(s["id"], valid_hotel)
+                        total_hotel = sum(h["biaya"] for h in valid_hotel)
+
                         # Simpan biaya lain
                         valid_items = [
                             {"keterangan": x["keterangan"], "jumlah": int(x["jumlah"])}
@@ -864,11 +874,9 @@ with tab2:
                         total_realisasi_final = (s.get("subtotal_uang_saku") or 0) + total_transport + total_hotel + total_lain_valid
 
                         db.table("sppd").update({
-                            "total_transport":      total_transport,
-                            "total_hotel":          total_hotel,
-                            "hari_tidak_menginap":  hari_tidak_menginap,
-                            "total_biaya":          total_realisasi_final,
-                            "hotel_keterangan":     hotel_keterangan or None,
+                            "total_transport":     total_transport,
+                            "total_hotel":         total_hotel,
+                            "total_biaya":         total_realisasi_final,
                         }).eq("id", s["id"]).execute()
 
                         # Selisih RKAP: bandingkan variable cost lama vs baru
