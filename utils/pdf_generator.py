@@ -1356,10 +1356,14 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
             c.drawRightString(tot_x, y, f"{total:,.0f}".replace(",","."))
         y -= rh
 
-    def hotel_sub_row(uraian, biaya, keterangan):
+    def hotel_sub_row(uraian, biaya, keterangan, huruf=""):
         """Sub-baris rincian hotel: uraian + keterangan merah inline di baris yang sama."""
         nonlocal y
         item_row("", f"   {uraian}", 1, biaya, biaya)
+        if huruf:
+            c.setFont(FONT_NORMAL, FONT_SIZE)
+            c.setFillColor(colors.black)
+            c.drawString(no_x + 0.4*cm, y + rh, huruf)
         if keterangan:
             teks_uraian = f"   {uraian}"
             lebar_uraian = stringWidth(teks_uraian, FONT_NORMAL, FONT_SIZE)
@@ -1397,8 +1401,10 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         if hotel_items:
             total_h = sum(h.get("biaya", 0) for h in hotel_items)
             item_row("3", "Biaya Penginapan", None, None, total_h)
-            for h in hotel_items:
-                hotel_sub_row(h.get("uraian", ""), h.get("biaya", 0), h.get("keterangan") or "")
+            multi = len(hotel_items) > 1
+            for i, h in enumerate(hotel_items):
+                huruf = chr(ord('a') + i) + "." if multi else ""
+                hotel_sub_row(h.get("uraian", ""), h.get("biaya", 0), h.get("keterangan") or "", huruf)
         else:
             penginapan = data.get("biaya_penginapan_aktual", 0)
             item_row("3", "Biaya Penginapan", 1, penginapan, penginapan)
