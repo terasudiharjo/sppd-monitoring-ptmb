@@ -1351,8 +1351,8 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         if qty is not None and satuan:
             qty_str = f"{qty}  x  {fmt_rp(satuan)}  ="
             c.drawRightString(num_x, y, qty_str)
-        c.drawString(rp_x, y, "Rp")
         if total is not None:
+            c.drawString(rp_x, y, "Rp")
             c.drawRightString(tot_x, y, f"{total:,.0f}".replace(",","."))
         y -= rh
 
