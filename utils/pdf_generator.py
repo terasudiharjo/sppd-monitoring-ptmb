@@ -1401,8 +1401,13 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         if hotel_items:
             total_h = sum(h.get("biaya", 0) for h in hotel_items)
             item_row("3", "Biaya Penginapan", None, None, total_h)
-            multi = len(hotel_items) > 1
-            for i, h in enumerate(hotel_items):
+            # Pisah: item uraian="" → baris 30%; item uraian!="" → hotel biasa (dengan huruf)
+            items_30pct = [h for h in hotel_items if not h.get("uraian")]
+            items_hotel = [h for h in hotel_items if h.get("uraian")]
+            for h in items_30pct:
+                hotel_sub_row("30% pagu penginapan", h.get("biaya", 0), h.get("keterangan") or "")
+            multi = len(items_hotel) > 1
+            for i, h in enumerate(items_hotel):
                 huruf = chr(ord('a') + i) + "." if multi else ""
                 hotel_sub_row(h.get("uraian", ""), h.get("biaya", 0), h.get("keterangan") or "", huruf)
         else:
