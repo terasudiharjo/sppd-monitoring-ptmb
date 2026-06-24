@@ -31,6 +31,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 _ROMAN_RE = re.compile(
     r'^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$'
@@ -1356,16 +1357,17 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         y -= rh
 
     def hotel_sub_row(uraian, biaya, keterangan):
-        """Sub-baris rincian hotel: uraian+biaya normal, keterangan merah di bawahnya."""
+        """Sub-baris rincian hotel: uraian + keterangan merah inline di baris yang sama."""
         nonlocal y
         item_row("", f"   {uraian}", 1, biaya, biaya)
         if keterangan:
+            teks_uraian = f"   {uraian}"
+            lebar_uraian = stringWidth(teks_uraian, FONT_NORMAL, FONT_SIZE)
             c.setFont(FONT_NORMAL, FONT_SIZE - 1)
             c.setFillColor(colors.red)
-            c.drawString(ket_x + 0.8*cm, y, keterangan)
+            c.drawString(ket_x + lebar_uraian + 0.15*cm, y + rh, keterangan)
             c.setFillColor(colors.black)
             c.setFont(FONT_NORMAL, FONT_SIZE)
-            y -= 0.35*cm
 
     lama      = data.get("lama_hari", 0)
     uh        = data.get("uang_harian", 0)

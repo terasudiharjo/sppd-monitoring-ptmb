@@ -751,12 +751,14 @@ with tab2:
                     _KET_HOTEL_OPTS = [
                         "",
                         "(30% belum dibayar)",
+                        "(30% sudah dibayar)",
                         "(sudah dibayar)",
                         "(belum dibayar)",
                     ]
                     _KET_HOTEL_LABELS = {
                         "": "— (tanpa keterangan)",
                         "(30% belum dibayar)": "(30% belum dibayar)",
+                        "(30% sudah dibayar)": "(30% sudah dibayar)",
                         "(sudah dibayar)": "(sudah dibayar)",
                         "(belum dibayar)": "(belum dibayar)",
                     }
@@ -779,18 +781,12 @@ with tab2:
 
                     hotel_items_input = st.session_state[hotel_key]
                     for i, h in enumerate(hotel_items_input):
-                        col_ur, col_bi, col_kt, col_del = st.columns([4, 2, 3, 0.6])
+                        col_ur, col_kt, col_bi, col_del = st.columns([4, 3, 2, 0.6])
                         h["uraian"] = col_ur.text_input(
                             "Uraian", h.get("uraian", ""),
                             placeholder="Nama hotel / keterangan",
                             key=f"h_ur_{s['id']}_{i}", label_visibility="collapsed"
                         )
-                        bi_val = col_bi.number_input(
-                            "Biaya", value=int(h.get("biaya", 0)),
-                            step=50000, key=f"h_bi_{s['id']}_{i}", label_visibility="collapsed"
-                        )
-                        col_bi.caption(format_rupiah(bi_val))
-                        h["biaya"] = bi_val
                         cur_ket = h.get("keterangan") or ""
                         if cur_ket not in _KET_HOTEL_OPTS:
                             cur_ket = ""
@@ -800,6 +796,12 @@ with tab2:
                             index=_KET_HOTEL_OPTS.index(cur_ket),
                             key=f"h_kt_{s['id']}_{i}", label_visibility="collapsed"
                         )
+                        bi_val = col_bi.number_input(
+                            "Biaya", value=int(h.get("biaya", 0)),
+                            step=50000, key=f"h_bi_{s['id']}_{i}", label_visibility="collapsed"
+                        )
+                        col_bi.caption(format_rupiah(bi_val))
+                        h["biaya"] = bi_val
                         if col_del.button("🗑", key=f"h_del_{s['id']}_{i}") and len(hotel_items_input) > 1:
                             hotel_items_input.pop(i)
                             st.rerun()
