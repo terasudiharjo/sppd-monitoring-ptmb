@@ -1391,16 +1391,14 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
 
     # Penginapan
     if mode == "pencairan":
+        item_row("3", "Biaya Penginapan")
         penginapan = data.get("biaya_penginapan", 0)
         if penginapan:
-            item_row("3", "Biaya Penginapan", 1, penginapan, penginapan)
-        else:
-            item_row("3", "Biaya Penginapan")  # kosong kalau menginap (bayar sendiri dulu)
+            hotel_sub_row("30% pagu penginapan", penginapan, "")
     else:
         hotel_items = data.get("hotel_items", [])
+        item_row("3", "Biaya Penginapan")
         if hotel_items:
-            total_h = sum(h.get("biaya", 0) for h in hotel_items)
-            item_row("3", "Biaya Penginapan", None, None, total_h)
             # Render semua baris hotel; uraian="" → tampil sebagai "30% pagu penginapan"
             rendered = [
                 (h.get("uraian") or "30% pagu penginapan", h.get("biaya", 0), h.get("keterangan") or "")
@@ -1412,7 +1410,8 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
                 hotel_sub_row(uraian, biaya, ket, huruf)
         else:
             penginapan = data.get("biaya_penginapan_aktual", 0)
-            item_row("3", "Biaya Penginapan", 1, penginapan, penginapan)
+            if penginapan:
+                hotel_sub_row("30% pagu penginapan", penginapan, "")
 
     # Uang representasi
     urep = data.get("uang_representasi", 0)
