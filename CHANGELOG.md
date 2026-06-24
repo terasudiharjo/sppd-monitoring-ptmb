@@ -4,6 +4,22 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-06-24
+
+**Perbaikan form hotel & PDF realisasi (`pages/3_sppd.py`, `utils/pdf_generator.py`):**
+1. Tambah opsi keterangan `(30% sudah dibayar)` di dropdown hotel form realisasi.
+2. Layout kolom form hotel diubah: urutan jadi **Uraian | Keterangan | Biaya | Del** (keterangan langsung di kanan uraian).
+3. PDF Realisasi: keterangan hotel sekarang tampil **inline** setelah nama hotel di baris yang sama (pakai `stringWidth` untuk ukur posisi), bukan di baris terpisah di bawahnya.
+4. PDF Realisasi: sub-baris hotel mendapat huruf **a., b., c.** jika ada lebih dari 1 item hotel. Huruf diindent dari angka "3" (posisi `no_x + 0.4cm`).
+5. Form hotel realisasi dipisah menjadi **2 section**:
+   - **Hari Tidak Menginap (30% Pagu)**: spinner hari + auto-calc nilai + dropdown keterangan status `(30% belum/sudah dibayar)` — nilai masuk RKAP.
+   - **Hotel**: input manual nama hotel + biaya + keterangan. Dropdown keterangan diperluas: `(sudah dibayar)`, `(belum dibayar)`, `(pribadi sudah dibayar)`, `(pribadi belum dibayar)`.
+6. Konvensi penyimpanan `sppd_hotel_detail`: item 30% disimpan dengan `uraian = ""` (penanda); item hotel biasa dengan `uraian != ""`. Keduanya masuk deduct RKAP via `total_hotel`.
+7. PDF: semua sub-baris hotel (30% dan yang menginap) diberi huruf a/b/c jika lebih dari 1 baris. Item `uraian=""` tampil sebagai "30% pagu penginapan".
+8. Save logic: `sppd.hari_tidak_menginap` di-update saat simpan realisasi.
+
+---
+
 ## Sesi 2026-06-23 (lanjutan 3)
 
 **Fitur: Rincian hotel per baris di realisasi (`pages/3_sppd.py`, `utils/database.py`, `utils/pdf_generator.py`):**

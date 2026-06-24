@@ -214,24 +214,34 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 ### Penginapan (Hotel)
 
 `plafon_hotel` di `rule_sppd` adalah **per malam**. Konvensi: trip N hari = N-1 malam (`max_malam = total_hari - 1`).
-Kolom baru di `sppd`: `hari_tidak_menginap INTEGER DEFAULT 0`.
+Kolom `sppd`: `menginap BOOLEAN DEFAULT TRUE`, `hari_tidak_menginap INTEGER DEFAULT 0`.
 
 **Di Pencairan:**
 - Toggle "Menginap Hotel" (default TRUE)
-- Menginap (TRUE) → muncul spinner "Hari tidak menginap hotel (dapat 30%)" (0 s/d max_malam)
-  - `hotel_30pct = hari_tidak_menginap × plafon × 30%` (bisa 0 jika semua menginap)
+- Menginap (TRUE) → spinner "Hari tidak menginap hotel (dapat 30%)" (0 s/d max_malam)
+  - `hotel_30pct = hari_tidak_menginap × plafon × 30%`
 - Tidak menginap (FALSE) → `hari_tidak_menginap = max_malam` otomatis, `hotel_30pct = max_malam × plafon × 30%`
 - DB simpan: `menginap`, `hari_tidak_menginap`, `total_hotel = hotel_30pct`, `total_biaya = uang_saku + hotel_30pct`
 
-**Di Realisasi:**
-- `menginap = False` → LOCKED, tampil `hari_tidak_menginap × plafon × 30%`
-- `menginap = True`, toggle aktif:
-  - Input "Biaya Hotel Aktual (Rp)" (untuk malam yang menginap)
-  - Spinner "Hari tidak menginap hotel" (editable, pre-fill dari DB)
-  - `total_hotel = biaya_hotel_aktual + hari_tidak_menginap × plafon × 30%`
-  - Toggle ke FALSE → `total_hotel = max_malam × plafon × 30%` (LOCKED)
+**Di Realisasi — 2 section terpisah:**
 
-**PDF**: tampil sebagai "Biaya Penginapan" + nilai total saja, tanpa rincian per hari.
+*Section A — Hari Tidak Menginap (30% Pagu):*
+- Spinner `hari_tidak_menginap` (0 s/d max_malam, pre-fill dari DB)
+- Auto-calc: `biaya_30pct = hari_tdk × plafon × 30%`
+- Dropdown keterangan (hanya untuk label PDF): `(30% belum dibayar)` | `(30% sudah dibayar)`
+- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian = ""` (penanda 30%)
+- `sppd.hari_tidak_menginap` di-update saat simpan
+
+*Section B — Hotel:*
+- Input manual per baris: Uraian (nama hotel) | Keterangan | Biaya
+- Dropdown keterangan: `(sudah dibayar)` | `(belum dibayar)` | `(pribadi sudah dibayar)` | `(pribadi belum dibayar)`
+- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian != ""`
+
+- `total_hotel = biaya_30pct + Σ biaya hotel` — keduanya masuk deduct RKAP
+
+**Konvensi `sppd_hotel_detail`**: `uraian = ""` → item 30% (auto-calc); `uraian != ""` → hotel yang diinap/direimbus.
+
+**PDF Realisasi**: "Biaya Penginapan [total]" sebagai header; sub-baris per item dengan huruf a/b/c jika > 1 item; `uraian=""` tampil sebagai "30% pagu penginapan"; keterangan merah inline setelah nama hotel.
 
 **Backward compat**: Record lama (`menginap=FALSE`, `hari_tidak_menginap=0`) → PDF pencairan pakai `total_hotel` dari DB langsung.
 
@@ -244,9 +254,9 @@ Kolom baru di `sppd`: `hari_tidak_menginap INTEGER DEFAULT 0`.
 - Item 1 = `(uang_harian_total + uang_makan_total + transport_lokal_total) / total_hari` per hari
 - Item 4 "Uang Representasi" = terpisah (khusus jabatan tertentu)
 
-### Rincian Transport & Biaya Lain (Realisasi)
+### Rincian Transport, Hotel & Biaya Lain (Realisasi)
 - Pattern simpan: delete all lama → insert baru (replace strategy)
-- Transport → `sppd_trip_detail`, Biaya lain → `sppd_biaya_lain`
+- Transport → `sppd_trip_detail`, Hotel → `sppd_hotel_detail`, Biaya lain → `sppd_biaya_lain`
 - `tanggal_berangkat`/`tanggal_kembali` di trip_detail wajib diisi — diambil dari visum
 
 ### Surat Disposisi di Visum
