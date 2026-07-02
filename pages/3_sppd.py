@@ -9,7 +9,7 @@ from utils.database import (
     save_hotel_detail, get_hotel_detail,
     get_pegawai_by_jabatan_nama, resolve_kategori_rkap,
     recalculate_sppd, update_tanggal_sppd_custom, update_jabatan_dokumen_sppd,
-    update_tanpa_uang_saku,
+    update_tanpa_uang_saku, assign_nomor_pernyataan_biaya,
     smart_title,
 )
 from utils.pdf_generator import (
@@ -552,9 +552,11 @@ with tab2:
                             _pb_suffix = _pb_suffix[:-2]
                     else:
                         _pb_suffix = ""
+                    _nomor_pb = s.get("nomor_pernyataan_biaya")
+                    _nomor_surat_pb = f"{_nomor_pb:03d}/{_pb_suffix}" if _nomor_pb and _pb_suffix else ""
                     pb_data = {
-                        "nomor_surat":            "",  # nomor urut dikosongkan — diisi manual
-                        "nomor_surat_suffix":     _pb_suffix,  # e.g. "1421002/10a-I/II/2026"
+                        "nomor_surat":            _nomor_surat_pb,
+                        "nomor_surat_suffix":     "" if _nomor_pb else _pb_suffix,
                         "nomor_spd":              spd_data.get("nomor_spd", "-"),
                         "tanggal_spd":            _parse_date(spd_data.get("tanggal_spd")) or date.today(),
                         "nama":                   smart_title(pegawai_data.get("nama", "")),
@@ -612,7 +614,10 @@ with tab2:
                                 total_biaya_cancel = s.get("total_biaya") or 0
                                 if rkap_id_cancel and total_biaya_cancel > 0:
                                     rollback_rkap(rkap_id_cancel, total_biaya_cancel)
-                                db.table("sppd").update({"status": "cancelled"}).eq("id", s["id"]).execute()
+                                db.table("sppd").update({
+                                    "status": "cancelled",
+                                    "nomor_pernyataan_biaya": None,
+                                }).eq("id", s["id"]).execute()
                                 if s.get("spd_id"):
                                     update_rekap_spd(s["spd_id"])
                                 st.success("✅ SPPD berhasil di-cancel. RKAP sudah di-rollback.")
@@ -645,10 +650,13 @@ with tab2:
                         )
 
                     if st.button("💾 Update Status", use_container_width=True, key=f"btn_status_{s['id']}"):
-                        db.table("sppd").update({
+                        _status_payload = {
                             "status": new_status,
-                            "nomor_voucher": nomor_voucher if nomor_voucher else s.get("nomor_voucher")
-                        }).eq("id", s["id"]).execute()
+                            "nomor_voucher": nomor_voucher if nomor_voucher else s.get("nomor_voucher"),
+                        }
+                        if new_status == "cancelled":
+                            _status_payload["nomor_pernyataan_biaya"] = None
+                        db.table("sppd").update(_status_payload).eq("id", s["id"]).execute()
 
                         rkap_id    = s.get("rkap_id")
                         uang_saku  = s.get("subtotal_uang_saku") or 0
@@ -678,6 +686,11 @@ with tab2:
                             elif new_status == "cancelled":
                                 if old_status == "pencairan":
                                     rollback_rkap(rkap_id, uang_saku)
+
+                        if new_status == "realisasi" and old_status == "pencairan":
+                            _tgl_spd = spd_data.get("tanggal_spd", "")
+                            _tahun_pb = int(_tgl_spd[:4]) if _tgl_spd else date.today().year
+                            assign_nomor_pernyataan_biaya(s["id"], _tahun_pb)
 
                         st.success("✅ Status berhasil diupdate!")
                         # Persist pilihan pegawai setelah update status

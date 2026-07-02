@@ -4,6 +4,19 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-07-02
+
+**Fitur: Penomoran otomatis Pernyataan Pengeluaran Biaya Riil (`utils/database.py`, `pages/3_sppd.py`, `check/backfill_nomor_pernyataan_biaya.py`):**
+1. Kolom baru `nomor_pernyataan_biaya INTEGER NULL` ditambahkan ke tabel `sppd` di Supabase (dijalankan manual via SQL Editor).
+2. Fungsi baru `assign_nomor_pernyataan_biaya(sppd_id, tahun)` di `utils/database.py`: mencari integer terkecil ≥ 1 yang belum dipakai untuk tahun tersebut (fill-gap logic), lalu menyimpannya ke kolom.
+3. Nomor di-assign otomatis saat status SPPD berubah `pencairan → realisasi` (di "Update Status" handler `pages/3_sppd.py`). Tahun diambil dari `tanggal_spd` milik SPD terkait.
+4. Nomor di-clear (`NULL`) saat SPPD di-cancel: dari status `completed` (expander cancel) maupun dari dropdown status.
+5. Format nomor surat PDF: `001/1421002/10a-I/II/2026` — nomor urut 3 digit zero-padded + suffix dari nomor SPD. Backward compat: SPPD lama tanpa nomor tetap tampil garis kosong.
+6. Tanggal di PDF tetap `date.today()` (tanggal cetak/tanda tangan).
+7. Script backfill `check/backfill_nomor_pernyataan_biaya.py`: mengisi kolom untuk semua SPPD lama status `realisasi`/`completed`, diurutkan per tanggal berangkat visum ASC. SPPD cancelled dilewati. Default `DRY_RUN = True`. Sudah dieksekusi: 233 SPPD tahun 2026 berhasil dinomori 001–233.
+
+---
+
 ## Sesi 2026-06-24
 
 **Perbaikan form hotel & PDF realisasi (`pages/3_sppd.py`, `utils/pdf_generator.py`):**

@@ -1004,6 +1004,37 @@ def update_tanpa_uang_saku(sppd_id: str, enabled: bool) -> dict:
         return {"success": True, "pesan": pesan}
 
 
+def assign_nomor_pernyataan_biaya(sppd_id: str, tahun: int) -> int:
+    """
+    Assign nomor urut pernyataan biaya riil ke sppd_id.
+    Cari integer terkecil >= 1 yang belum dipakai untuk tahun tersebut.
+    Tahun dicocokkan dari tanggal_spd milik masing-masing SPPD.
+    Returns nomor yang di-assign.
+    """
+    db = get_client()
+    res = db.table("sppd")\
+        .select("nomor_pernyataan_biaya, spd(tanggal_spd)")\
+        .not_.is_("nomor_pernyataan_biaya", "null")\
+        .execute()
+
+    used: set[int] = set()
+    for row in (res.data or []):
+        spd_row = row.get("spd") or {}
+        tgl = (spd_row.get("tanggal_spd") or "")[:4]
+        try:
+            if tgl and int(tgl) == tahun:
+                used.add(row["nomor_pernyataan_biaya"])
+        except (ValueError, TypeError):
+            pass
+
+    n = 1
+    while n in used:
+        n += 1
+
+    db.table("sppd").update({"nomor_pernyataan_biaya": n}).eq("id", sppd_id).execute()
+    return n
+
+
 def update_tujuan_visum(visum_id: str, tujuan_baru: str, keperluan_baru: str) -> dict:
     """
     Update tujuan + keperluan visum. Jika tujuan berubah:
