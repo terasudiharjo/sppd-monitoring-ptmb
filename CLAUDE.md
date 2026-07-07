@@ -160,6 +160,7 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 4. **Realokasi RKAP** — ✅ Fitur lengkap & diterima (sesi 2026-06-09). Lihat bagian "Keputusan Desain - Realokasi RKAP" untuk detail desain & implementasi.
 5. **Nomor otomatis Pernyataan Biaya Riil** — nomor urut masih dikosongkan (diisi manual). Format suffix sudah tampil otomatis: `Nomor : ___/1421002/10a-I/II/2026` (garis kosong 2.5cm untuk nomor urut, diambil dari nomor SPD). Rencana lanjutan: tambah kolom `nomor_pernyataan_biaya TEXT NULL` di tabel `sppd`, auto-generate nomor urut sequential saat SPPD masuk status `realisasi`, kirim ke `nomor_surat` di `pb_data` → PDF otomatis tampil lengkap.
 6. **Driver outsourcing** — potensi jabatan baru di `rule_sppd` untuk driver non-PKWT/non-pegawai yang ikut dinas. Belum ada rule tarif. Perlu diskusi apakah dapat SPPD atau tidak.
+7. **Fix scroll-jump pakai `st.fragment`** — 🚧 in progress sejak sesi 2026-07-07, target selesai ±3 hari. Sudah selesai: `pages/3_sppd.py` (tab Detail & Realisasi + tab Rekap SPD). Belum: `pages/2_visum.py` tab "Detail & Edit Visum" (prioritas tinggi), `pages/4_rkap_monitor.py` tab "Detail per Bulan" & "Realokasi RKAP", `pages/5_pegawai.py` tab "Kelola Pegawai" (prioritas rendah). Juga masih ada edge case minor di SPPD: ganti pilihan SPD (bukan pegawai) di tab Detail & Realisasi masih reset scroll dalam tab itu sendiri — lihat CHANGELOG sesi 2026-07-07 untuk detail root cause.
 
 ---
 
@@ -210,6 +211,30 @@ id, sppd_id, urutan, keterangan, jumlah, created_at
 **Alur deduct tidak berubah** — `deduct_rkap`/`rollback_rkap` hanya sentuh `anggaran_terpakai` + `anggaran_sisa` via delta, tidak pernah reset `anggaran_awal`.
 
 ---
+
+### Pola `@st.fragment` untuk Tab Berat (mulai sesi 2026-07-07)
+
+**Masalah yang diselesaikan:** `st.tabs` di Streamlit tidak lazy-render — tiap ada widget berubah di mana pun di halaman, SEMUA tab (termasuk yang tidak aktif) ikut dieksekusi ulang & remount di DOM (cuma disembunyikan via CSS). Kalau ada tab yang isinya berat & tingginya bervariasi besar per pilihan (misal form detail/edit per record), reflow ini kerasa sebagai halaman "loncat" scroll.
+
+**Pola solusi:** bungkus isi tab berat jadi fungsi terpisah + decorator `@st.fragment`, dipanggil di dalam `with tabX:`. Contoh di `pages/3_sppd.py`:
+```python
+@st.fragment
+def _render_tab2_detail_realisasi():
+    st.subheader(...)
+    ...  # isi tab, sama persis kayak sebelumnya, cuma pindah ke dalam function
+
+with tab2:
+    _render_tab2_detail_realisasi()
+```
+Efeknya: interaksi widget DI DALAM fragment (pilih dari selectbox, tambah/hapus baris, dst) hanya rerun fragment itu sendiri — tab lain di halaman yang sama tidak ikut ter-reflow/reset scroll.
+
+**Aturan `st.rerun()` di dalam fragment:**
+- Aksi yang **menulis ke DB** (update status, simpan, cancel, recalc, dst) → pakai `st.rerun(scope="app")` supaya tab lain di halaman yang sama (yang datanya terpengaruh, misal daftar/rekap) ikut ter-refresh.
+- Aksi yang **cuma manipulasi `session_state`** (tambah/hapus baris form, dsb, tanpa write ke DB) → `st.rerun()` biasa (tanpa `scope`) sudah cukup, dampaknya memang cuma perlu di fragment itu.
+
+**Known limitation:** kalau widget key di dalam fragment diturunkan dari ID record yang sedang dipilih (pola `key=f"...{s['id']}_{i}"`, dipakai luas di form realisasi SPPD), maka GANTI record (bukan sekadar edit field) tetap bikin scroll reset — karena semua key berubah sekaligus, React bongkar-pasang total elemen di fragment itu. `st.fragment` tetap membatasi dampaknya ke fragment itu sendiri (tab lain di halaman tidak ikut kena), tapi tidak menghilangkan reset scroll lokal di dalam fragment tsb. Ini beda root cause dari masalah utama (full-page rerun) yang sudah selesai dibereskan.
+
+**Status rollout**: selesai di `pages/3_sppd.py`. Belum diterapkan di `pages/2_visum.py`, `pages/4_rkap_monitor.py`, `pages/5_pegawai.py` — lihat "Status Pending" No. 7.
 
 ### Penginapan (Hotel)
 

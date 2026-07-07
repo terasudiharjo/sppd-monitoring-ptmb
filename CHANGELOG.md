@@ -4,6 +4,28 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-07-07
+
+**🚧 IN PROGRESS — Fix scroll-jump di halaman SPPD pakai `st.fragment` (`pages/3_sppd.py`):**
+
+**Masalah:** di halaman Visum & SPPD, pilih item di selectbox (misal detail visum/SPPD) bikin seluruh halaman (semua tab) ikut ke-scroll turun. Root cause: `st.tabs` di Streamlit tidak lazy — semua tab dieksekusi ulang & di-mount di DOM tiap ada widget yang berubah di mana pun di halaman, walau tab lain sedang tidak aktif (cuma disembunyikan via CSS). Karena tab "Detail & Realisasi" (~830 baris) dan tab "Detail & Edit Visum" (~620 baris) kontennya sangat bervariasi tingginya per pilihan, reflow ini kerasa sebagai "loncatan" scroll di seluruh halaman.
+
+**Yang sudah dikerjakan (halaman SPPD, `pages/3_sppd.py`):**
+1. Tab "Detail & Realisasi" (isi `with tab2:`) dan tab "Rekap SPD" (isi `with tab3:`) masing-masing dibungkus jadi fungsi terpisah dengan decorator `@st.fragment` (`_render_tab2_detail_realisasi()`, `_render_tab3_rekap_spd()`). Efeknya: interaksi widget di dalam tab tsb hanya rerun fragment itu sendiri, bukan seluruh script/halaman.
+2. Semua `st.rerun()` yang mengikuti write ke DB (update status, simpan realisasi, cancel, recalc, update tanggal/jabatan dokumen/uang saku, dsb — 8 titik total) diubah jadi `st.rerun(scope="app")` supaya tab lain (Daftar SPPD, Rekap SPD) tetap ikut ter-refresh datanya setelah ada perubahan. `st.rerun()` polos (tanpa scope) dibiarkan untuk aksi tambah/hapus baris (transport/hotel/biaya lain) karena itu murni manipulasi `session_state`, tidak perlu tersebar ke tab lain.
+3. Verifikasi otomatis pakai Playwright (headless Chromium) — login, navigasi ke halaman SPPD, ukur `scrollTop` container `section[data-testid="stMain"]` sebelum/sesudah ganti pilihan di selectbox:
+   - Tab **Rekap SPD**: ganti pilihan SPD → scroll **terjaga** (tidak reset).
+   - Tab **Detail & Realisasi**: ganti **pegawai** (dalam SPD yang sama, alur paling sering dipakai) → scroll **terjaga**.
+   - Tab **Detail & Realisasi**: ganti **SPD** (bukan pegawainya) → scroll **masih reset ke atas** — tapi sekarang HANYA di dalam tab itu sendiri, tab lain (Daftar SPPD, Rekap SPD) tidak ikut kena. Root cause beda: hampir semua widget di form itu (transport, hotel, biaya lain, dst) pakai key yang diturunkan dari `s['id']` (ID record SPPD) — begitu SPD ganti, semua key berubah sekaligus → React bongkar-pasang total elemen di tab itu → scroll reset. `st.fragment` tidak otomatis menyelesaikan ini karena bukan soal scope rerun, tapi soal remount elemen akibat key yang berubah total.
+4. Efek samping yang dikonfirmasi user secara langsung (bukan cuma teori): halaman SPPD terasa jauh lebih responsif/cepat setelah fix — karena fragment scoping juga mengurangi query Supabase yang di-refetch ulang tiap klik (sebelumnya, tiap interaksi di tab manapun re-trigger query di tab 1 & tab 3 juga; sekarang hanya fragment yang diklik yang query ulang).
+
+**⏳ Belum selesai — lanjutan (target selesai dalam ±3 hari dari sesi ini):**
+- Fix kasus "ganti SPD masih reset scroll dalam tab" di `pages/3_sppd.py` tab Detail & Realisasi (perlu treatment tambahan di luar `st.fragment`, kemungkinan stabilkan sebagian key yang tidak perlu ikut berubah, atau terima sebagai known limitation minor karena scope-nya sudah sangat mengecil).
+- Terapkan pola `@st.fragment` yang sama ke halaman lain yang punya gejala serupa: `pages/2_visum.py` tab "Detail & Edit Visum" (~620 baris, prioritas tinggi — sering dipakai), `pages/4_rkap_monitor.py` tab "Detail per Bulan" & tab "Realokasi RKAP", `pages/5_pegawai.py` tab "Kelola Pegawai" (prioritas rendah, kontennya relatif kecil).
+- (Terpisah, belum dikerjakan) Optimasi performa lanjutan pakai `@st.cache_data` untuk query master data yang jarang berubah (pegawai, divisi, jabatan, rule_sppd) — lihat item di "Status Pending" CLAUDE.md.
+
+---
+
 ## Sesi 2026-07-02
 
 **Fitur: Penomoran otomatis Pernyataan Pengeluaran Biaya Riil (`utils/database.py`, `pages/3_sppd.py`, `check/backfill_nomor_pernyataan_biaya.py`):**

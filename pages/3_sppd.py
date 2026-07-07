@@ -124,7 +124,8 @@ with tab1:
 # ══════════════════════════════════════════════════════
 # TAB 2: DETAIL & REALISASI
 # ══════════════════════════════════════════════════════
-with tab2:
+@st.fragment
+def _render_tab2_detail_realisasi():
     st.subheader("Detail SPPD & Input Realisasi")
 
     # Ambil SPD aktif (bukan completed) — tidak join visum karena SPD bisa multi-visum / tanpa visum_id
@@ -285,7 +286,7 @@ with tab2:
                                 hasil_tgl = update_tanggal_sppd_custom(s["id"], edit_tgl_b_sppd, edit_tgl_k_sppd)
                                 if hasil_tgl["success"]:
                                     st.success(f"✅ {hasil_tgl['pesan']}")
-                                    st.rerun()
+                                    st.rerun(scope="app")
                                 else:
                                     st.error(f"❌ {hasil_tgl['pesan']}")
 
@@ -304,7 +305,7 @@ with tab2:
                             hasil_jd = update_jabatan_dokumen_sppd(s["id"], jab_dok_input.strip())
                             if hasil_jd["success"]:
                                 st.success(f"✅ {hasil_jd['pesan']}")
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 st.error(f"❌ {hasil_jd['pesan']}")
 
@@ -333,7 +334,7 @@ with tab2:
                             hasil_us = update_tanpa_uang_saku(s["id"], _new_val)
                             if hasil_us["success"]:
                                 st.success(f"✅ {hasil_us['pesan']}")
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 st.error(f"❌ {hasil_us['pesan']}")
 
@@ -390,7 +391,7 @@ with tab2:
                         hasil = recalculate_sppd(s["id"])
                         if hasil["success"]:
                             st.success(f"✅ {hasil['pesan']}")
-                            st.rerun()
+                            st.rerun(scope="app")
                         else:
                             st.error(f"❌ {hasil['pesan']}")
 
@@ -472,7 +473,7 @@ with tab2:
                         # Update label dropdown agar nama tidak reset
                         nama_pgw  = pegawai_data.get("nama", "-")
                         st.session_state[state_key] = f"{nama_pgw} — PENCAIRAN"
-                        st.rerun()
+                        st.rerun(scope="app")
 
                 elif s["status"] in ["pencairan", "realisasi", "completed"]:
                     # Bisa download ulang kapan saja
@@ -502,7 +503,7 @@ with tab2:
                             hasil = recalculate_sppd(s["id"])
                             if hasil["success"]:
                                 st.success(f"✅ {hasil['pesan']}")
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 st.error(f"❌ {hasil['pesan']}")
 
@@ -621,7 +622,7 @@ with tab2:
                                 if s.get("spd_id"):
                                     update_rekap_spd(s["spd_id"])
                                 st.success("✅ SPPD berhasil di-cancel. RKAP sudah di-rollback.")
-                                st.rerun()
+                                st.rerun(scope="app")
                 elif s["status"] == "cancelled":
                     st.error("❌ SPPD ini sudah CANCELLED.")
                 else:
@@ -698,7 +699,7 @@ with tab2:
                         nama_pegawai = s["pegawai"]["nama"] if s.get("pegawai") else "-"
                         new_label = f"{nama_pegawai} — {new_status.upper()}"
                         st.session_state[state_key] = new_label
-                        st.rerun()
+                        st.rerun(scope="app")
 
             with col_right:
                 if s["status"] == "realisasi":
@@ -950,15 +951,19 @@ with tab2:
                             update_rekap_spd(s["spd_id"])
 
                         st.success("✅ Realisasi berhasil disimpan!")
-                        st.rerun()
+                        st.rerun(scope="app")
 
                 elif s["status"] not in ["completed", "cancelled"]:
                     st.info(f"ℹ️ Input realisasi tersedia saat status **REALISASI**.\nStatus sekarang: **{s['status'].upper()}**")
 
+with tab2:
+    _render_tab2_detail_realisasi()
+
 # ══════════════════════════════════════════════════════
 # TAB 3: REKAP SPD
 # ══════════════════════════════════════════════════════
-with tab3:
+@st.fragment
+def _render_tab3_rekap_spd():
     st.subheader("Rekap SPD per Visum")
 
     res_spd = db.table("spd")\
@@ -1038,4 +1043,7 @@ with tab3:
             if st.button("🔄 Hitung Ulang Rekap", key="btn_rekap_ulang"):
                 update_rekap_spd(spd["id"])
                 st.success("✅ Rekap berhasil dihitung ulang!")
-                st.rerun()
+                st.rerun(scope="app")
+
+with tab3:
+    _render_tab3_rekap_spd()
