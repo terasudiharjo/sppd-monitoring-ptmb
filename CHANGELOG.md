@@ -4,6 +4,21 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-07-08
+
+**Fix: Regresi scroll Streamlit Cloud pasca fix `st.fragment` (`requirements.txt`):**
+1. User lapor fix scroll-jump sesi 2026-07-07 (`pages/3_sppd.py`) sudah aman di lokal, tapi **masih bermasalah di Streamlit Cloud** (`sppd-ptmb.streamlit.app`): pilih SPD dari dropdown di tab manapun bikin scrollbar browser (bukan cuma konten) ikut memanjang — "semua tab jadi satu scroll panjang". Reboot berkali-kali tidak membantu.
+2. Diagnosis awal (versi salah): sempat dicurigai reboot tidak reinstall dependency kalau `requirements.txt` tidak berubah, jadi `streamlit>=1.32.0` dinaikkan ke `>=1.37.0` — ternyata tidak menyelesaikan masalah. Log deploy Streamlit Cloud menunjukkan dependency SELALU di-reinstall tiap reboot (bukan itu akar masalahnya), dan versi yang ter-install malah lebih baru dari lokal: `streamlit==1.59.0`.
+3. **Root cause sebenarnya**: bug regresi resmi Streamlit sendiri — [streamlit/streamlit#14917](https://github.com/streamlit/streamlit/issues/14917), parent-page scroll reset yang terjadi saat app di-iframe-embed (persis kondisi Streamlit Cloud; `streamlit run` lokal biasa tidak pernah di-iframe-embed sehingga bug ini TIDAK BISA direproduce di lokal sama sekali, walau sudah dicoba exact match versi 1.54.0 dan 1.59.0). Regresi mulai versi 1.41.0, makin parah di 1.53.0, masih rusak minimal sampai 1.56.0. `1.40.2` adalah versi terakhir yang confirmed aman.
+4. Verifikasi dilakukan pakai Playwright terhadap 2 environment: (a) local dev server dengan venv terisolasi per versi streamlit (1.54.0, 1.59.0, 1.40.2 — semua "aman" di lokal karena memang tidak akan pernah reproduce di sana), dan (b) langsung ke URL production `sppd-ptmb.streamlit.app` (ditemukan app di-embed dalam iframe di path `/~/+/dashboard`, beda struktur DOM total dari lokal).
+5. **Fix**: `requirements.txt` — `streamlit` dipin EXACT `==1.40.2` (bukan lower-bound lagi), supaya Cloud tidak auto-upgrade ke versi ber-regresi di reboot berikutnya. Commit `1a3ea97` (naikkan ke `>=1.37.0`, tidak menyelesaikan) lalu `378119c` (pin exact `1.40.2`, **berhasil** — dikonfirmasi user langsung di Streamlit Cloud setelah reboot).
+6. Detail lengkap & pelajaran untuk lanjutan rollout `st.fragment` ke halaman lain: lihat CLAUDE.md bagian "Status Pending" No. 7 dan "Catatan Teknis".
+
+**PR baru — belum dikerjakan:**
+7. **PDF SPPD — pendetailan hotel masih bermasalah.** User baru sebatas melaporkan area masalahnya (bagian hotel di dokumen PDF SPPD), belum dijelaskan detail spesifik apa yang salah. Lanjut sesi berikutnya. Dicatat di CLAUDE.md "Status Pending" No. 8.
+
+---
+
 ## Sesi 2026-07-07
 
 **🚧 IN PROGRESS — Fix scroll-jump di halaman SPPD pakai `st.fragment` (`pages/3_sppd.py`):**
