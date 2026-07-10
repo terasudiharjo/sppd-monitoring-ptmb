@@ -15,6 +15,13 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 6. Refactor kecil: fungsi `hotel_sub_row` di `pdf_generator.py` sekarang delegasi ke `sub_row` generik baru (dipakai juga untuk render tiket transport), biar logic alignment huruf + indent tidak duplikat.
 7. `utils/test_sppd_realisasi.py` diupdate datanya (skenario 2 hotel + 1 baris 30% pagu, 2 tiket pesawat) untuk memudahkan preview visual saat debug lanjutan.
 
+**Lanjutan rollout `st.fragment`: tab "Detail & Edit Visum" (`pages/2_visum.py`):**
+1. Lanjutan dari Status Pending No. 7 — tab `tab3` ("🔍 Detail & Edit Visum", baris ~386-1000) dibungkus jadi `@st.fragment` (fungsi `_render_tab3_detail_edit_visum()`), pola identik dengan yang sudah dipakai di `pages/3_sppd.py`.
+2. Semua `st.rerun()` yang mengikuti write ke DB (edit tanggal visum, edit tujuan/keperluan, simpan disposisi, edit peserta, cancel visum, update status) diubah jadi `st.rerun(scope="app")` supaya tab lain di halaman yang sama ikut refresh. 2 titik `st.rerun()` yang murni manipulasi `session_state` (tambah/hapus baris disposisi, belum disimpan ke DB) dibiarkan polos, konsisten dengan aturan di CLAUDE.md.
+3. Murni perubahan teknis rendering — tidak ada satu baris pun logika bisnis (query, kondisi, kalkulasi) yang diubah.
+4. Diverifikasi end-to-end pakai Playwright (headless Chromium): login → buka tab Detail & Edit Visum → pilih visum → ganti ke visum lain → expand form edit → cek tab lain (Daftar Visum, Kelola SPD, Buat Visum Baru) tetap normal. Nol exception/traceback di browser maupun log terminal Streamlit.
+5. Belum diterapkan: `pages/4_rkap_monitor.py` (tab "Detail per Bulan" & "Realokasi RKAP"), `pages/5_pegawai.py` (tab "Kelola Pegawai") — lanjut sesi berikutnya.
+
 ---
 
 ## Sesi 2026-07-08

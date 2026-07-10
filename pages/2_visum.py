@@ -383,7 +383,8 @@ with tab2:
 # ══════════════════════════════════════════════════════
 # TAB 3: DETAIL & EDIT VISUM
 # ══════════════════════════════════════════════════════
-with tab3:
+@st.fragment
+def _render_tab3_detail_edit_visum():
     st.subheader("Detail & Edit Visum")
 
     res_all    = db.table("visum").select("*").order("created_at", desc=True).execute()
@@ -486,7 +487,7 @@ with tab3:
                                     if hasil_tgl["n_skip"]:
                                         msg += f" {hasil_tgl['n_skip']} SPPD dilewati (tanggal custom)."
                                     st.success(msg)
-                                    st.rerun()
+                                    st.rerun(scope="app")
 
                 # ── Edit Tujuan & Keperluan ──
                 if v["status"] != "cancelled":
@@ -537,7 +538,7 @@ with tab3:
                                                 f" (lokasi: {res_tj['lokasi_nama']})."
                                             )
                                         st.success(msg)
-                                        st.rerun()
+                                        st.rerun(scope="app")
                                     else:
                                         st.error(f"❌ {res_tj['pesan']}")
 
@@ -610,7 +611,7 @@ with tab3:
                             for pfx in ["dn_", "dd_", "dp_", "dl_"]:
                                 st.session_state.pop(f"{pfx}{visum_id}_{j}", None)
                         st.success(f"✅ {len(to_save)} disposisi disimpan!")
-                        st.rerun()
+                        st.rerun(scope="app")
 
                 st.markdown("---")
 
@@ -684,7 +685,7 @@ with tab3:
                                 db.table("visum").update({"peserta": peserta_baru_ids})\
                                     .eq("id", visum_id).execute()
                                 st.success("✅ Peserta diperbarui.")
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 # Cari spd_id dari sppd yang sudah ada untuk visum ini
                                 res_sppd_spd = db.table("sppd").select("spd_id")\
@@ -714,7 +715,7 @@ with tab3:
                                     nama = get_nama_pegawai(r["pegawai_id"], pegawai_map)
                                     st.error(f"🚫 {nama} — {r['pesan']}")
 
-                                st.rerun()
+                                st.rerun(scope="app")
                     else:
                         st.caption("Tidak ada perubahan peserta.")
 
@@ -978,7 +979,7 @@ with tab3:
                                 db.table("visum").update({"status": "cancelled"})\
                                     .eq("id", visum_id).execute()
                                 st.success("✅ Visum dibatalkan.")
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 with st.spinner("Membatalkan semua SPPD..."):
                                     hasil_cancel = cancel_semua_sppd_visum(visum_id)
@@ -991,12 +992,15 @@ with tab3:
                                     db.table("visum").update({"status": "cancelled"})\
                                         .eq("id", visum_id).execute()
                                     st.success(f"✅ Visum dibatalkan. {hasil_cancel['dicancelled']} SPPD di-cancel.")
-                                    st.rerun()
+                                    st.rerun(scope="app")
                         else:
                             db.table("visum").update({"status": new_status})\
                                 .eq("id", visum_id).execute()
                             st.success(f"✅ Status berhasil diupdate ke {new_status.upper()}!")
-                            st.rerun()
+                            st.rerun(scope="app")
+
+with tab3:
+    _render_tab3_detail_edit_visum()
 
 # ══════════════════════════════════════════════════════
 # TAB 4: KELOLA SPD
