@@ -41,8 +41,13 @@ DATA = {
         {"keterangan": "Tiket Pesawat CGK - BPN", "qty": 1, "satuan": 2300000},
     ],
 
-    # Hotel aktual (bukan 30% lagi)
-    "biaya_penginapan_aktual": 3600000,
+    # Hotel aktual: rincian per baris, "hari" dipakai buat tampilkan "hari x rate = biaya"
+    # uraian="" → baris 30% pagu penginapan
+    "hotel_items": [
+        {"uraian": "", "biaya": 175000, "keterangan": "(30% belum dibayar)", "hari": 1},
+        {"uraian": "Hotel A", "biaya": 1500000, "keterangan": "(sudah dibayar)", "hari": 2},
+        {"uraian": "Hotel B", "biaya": 500000, "keterangan": "", "hari": 1},
+    ],
 
     # Biaya lain-lain (seminar, dll)
     "biaya_lain": [
@@ -50,8 +55,8 @@ DATA = {
     ],
 
     # Grand total manual (uang harian + transport + hotel + lain)
-    # 4*1575000 + 4*150000 + (2500000+2300000) + 3600000 + 8850000 = 21950000
-    "grand_total": 21950000,
+    # 4*1575000 + 4*150000 + (2500000+2300000) + (175000+1500000+500000) + 8850000 = 22725000
+    "grand_total": 22725000,
 
     "ttd_dirut": "Dr. Saharuddin, M.M",
 }

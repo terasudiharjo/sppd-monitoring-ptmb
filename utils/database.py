@@ -1574,7 +1574,7 @@ def get_transport_detail(sppd_id: str) -> list:
 
 def save_hotel_detail(sppd_id: str, items: list):
     """Hapus semua rincian hotel lama lalu insert baru.
-    items = [{"uraian": str, "biaya": int, "keterangan": str|None}, ...]
+    items = [{"uraian": str, "biaya": int, "keterangan": str|None, "hari": int}, ...]
     """
     db = get_client()
     db.table("sppd_hotel_detail").delete().eq("sppd_id", sppd_id).execute()
@@ -1586,6 +1586,7 @@ def save_hotel_detail(sppd_id: str, items: list):
                 "uraian":     item.get("uraian", ""),
                 "biaya":      int(item.get("biaya", 0)),
                 "keterangan": item.get("keterangan") or None,
+                "hari":       int(item.get("hari") or 1),
             }
             for i, item in enumerate(items)
         ]
@@ -1596,7 +1597,7 @@ def get_hotel_detail(sppd_id: str) -> list:
     """Return list rincian hotel untuk satu sppd_id, urut by urutan."""
     db = get_client()
     res = db.table("sppd_hotel_detail")\
-        .select("urutan, uraian, biaya, keterangan")\
+        .select("urutan, uraian, biaya, keterangan, hari")\
         .eq("sppd_id", sppd_id)\
         .order("urutan")\
         .execute()

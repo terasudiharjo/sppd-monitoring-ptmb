@@ -4,6 +4,19 @@ Histori perubahan per sesi pengerjaan. Untuk dokumentasi operasional, lihat CLAU
 
 ---
 
+## Sesi 2026-07-10
+
+**Fitur: Rincian hari x rate untuk hotel di PDF SPPD Realisasi (`pages/3_sppd.py`, `utils/database.py`, `utils/pdf_generator.py`):**
+1. Latar belakang: PR dari tim sekper — kalau satu perjalanan dinas menginap di beberapa hotel berbeda (misal 2 hari di Hotel A, 1 hari di Hotel B), dokumen PDF Realisasi cuma menampilkan nominal flat per hotel tanpa rincian berapa malam × rate/malam.
+2. Kolom baru `sppd_hotel_detail.hari INTEGER NOT NULL DEFAULT 1` — sudah dijalankan user via SQL Editor Supabase. `save_hotel_detail`/`get_hotel_detail` di `utils/database.py` diupdate untuk baca/tulis kolom ini.
+3. Form Section B "Hotel" (tab Detail & Realisasi, `pages/3_sppd.py`) dapat kolom input baru "Hari" per baris (default 1). Form tetap simpel — user tetap input total biaya per hotel + jumlah hari, **bukan** rate/hari langsung. Section A (30% pagu) ikut menyimpan `hari = hari_tidak_menginap` untuk baris yang sama di `sppd_hotel_detail`.
+4. `utils/pdf_generator.py`: rate/hari dihitung mundur (`biaya ÷ hari`, dibulatkan) lalu ditampilkan di PDF sebagai `hari × Rp rate = Rp total`, memakai mekanisme "qty x satuan =" yang sudah ada (dipakai juga di baris "Uang Harian"). Berlaku untuk semua baris hotel (30% pagu maupun hotel bernama) di mode Realisasi.
+5. Sekalian dibenerin (diminta user setelah lihat preview): huruf urut a/b/c untuk daftar hotel dan daftar tiket transport sekarang sejajar tepat di bawah huruf "B" pada label item induk ("Biaya Transportasi"/"Biaya Penginapan") — sebelumnya nempel di dekat margin kiri (kolom nomor item "1"/"2"/"3"), kurang rapi. Tiket transport di mode Realisasi sebelumnya sama sekali tidak punya huruf urut — sekarang ikut dapat a/b/c kalau tiketnya lebih dari 1 (pola sama dengan hotel).
+6. Refactor kecil: fungsi `hotel_sub_row` di `pdf_generator.py` sekarang delegasi ke `sub_row` generik baru (dipakai juga untuk render tiket transport), biar logic alignment huruf + indent tidak duplikat.
+7. `utils/test_sppd_realisasi.py` diupdate datanya (skenario 2 hotel + 1 baris 30% pagu, 2 tiket pesawat) untuk memudahkan preview visual saat debug lanjutan.
+
+---
+
 ## Sesi 2026-07-08
 
 **Fix: Regresi scroll Streamlit Cloud pasca fix `st.fragment` (`requirements.txt`):**

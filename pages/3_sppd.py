@@ -800,7 +800,7 @@ def _render_tab2_detail_realisasi():
                             if not menginap_pencairan:
                                 ket_30pct_init = "(30% belum dibayar)"
                         if not hotel_items_init:
-                            hotel_items_init = [{"uraian": "", "biaya": 0, "keterangan": ""}]
+                            hotel_items_init = [{"uraian": "", "biaya": 0, "keterangan": "", "hari": 1}]
                         st.session_state[hotel_key] = hotel_items_init
                         if ket_30pct_key not in st.session_state:
                             st.session_state[ket_30pct_key] = ket_30pct_init
@@ -828,7 +828,7 @@ def _render_tab2_detail_realisasi():
                     st.markdown("**Hotel**")
                     hotel_items_input = st.session_state[hotel_key]
                     for i, h in enumerate(hotel_items_input):
-                        col_ur, col_kt, col_bi, col_del = st.columns([4, 3, 2, 0.6])
+                        col_ur, col_kt, col_hr, col_bi, col_del = st.columns([3.5, 2.5, 1, 2, 0.6])
                         h["uraian"] = col_ur.text_input(
                             "Uraian", h.get("uraian", ""),
                             placeholder="Nama hotel / keterangan",
@@ -843,18 +843,24 @@ def _render_tab2_detail_realisasi():
                             index=_KET_HOTEL_OPTS.index(cur_ket),
                             key=f"h_kt_{s['id']}_{i}", label_visibility="collapsed"
                         )
+                        hr_val = col_hr.number_input(
+                            "Hari", min_value=1, value=int(h.get("hari") or 1),
+                            step=1, key=f"h_hr_{s['id']}_{i}", label_visibility="collapsed"
+                        )
+                        h["hari"] = hr_val
                         bi_val = col_bi.number_input(
                             "Biaya", value=int(h.get("biaya", 0)),
                             step=50000, key=f"h_bi_{s['id']}_{i}", label_visibility="collapsed"
                         )
-                        col_bi.caption(format_rupiah(bi_val))
+                        rate_preview = round(bi_val / hr_val) if hr_val else bi_val
+                        col_bi.caption(f"{format_rupiah(bi_val)}  ({hr_val} × {format_rupiah(rate_preview)})")
                         h["biaya"] = bi_val
                         if col_del.button("🗑", key=f"h_del_{s['id']}_{i}") and len(hotel_items_input) > 1:
                             hotel_items_input.pop(i)
                             st.rerun()
 
                     if st.button("➕ Tambah Hotel", key=f"h_add_{s['id']}"):
-                        hotel_items_input.append({"uraian": "", "biaya": 0, "keterangan": ""})
+                        hotel_items_input.append({"uraian": "", "biaya": 0, "keterangan": "", "hari": 1})
                         st.rerun()
 
                     total_hotel = biaya_30pct + sum(int(h.get("biaya", 0)) for h in hotel_items_input)
@@ -912,9 +918,15 @@ def _render_tab2_detail_realisasi():
                                 "uraian": "",
                                 "biaya": biaya_30pct,
                                 "keterangan": ket_30pct,
+                                "hari": hari_tdk_real,
                             })
                         valid_hotel += [
-                            {"uraian": h.get("uraian", ""), "biaya": int(h.get("biaya", 0)), "keterangan": h.get("keterangan") or None}
+                            {
+                                "uraian": h.get("uraian", ""),
+                                "biaya": int(h.get("biaya", 0)),
+                                "keterangan": h.get("keterangan") or None,
+                                "hari": int(h.get("hari") or 1),
+                            }
                             for h in hotel_items_input if int(h.get("biaya", 0)) > 0
                         ]
                         save_hotel_detail(s["id"], valid_hotel)

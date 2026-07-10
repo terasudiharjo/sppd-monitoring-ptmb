@@ -1356,22 +1356,37 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
             c.drawRightString(tot_x, y, f"{total:,.0f}".replace(",","."))
         y -= rh
 
-    def hotel_sub_row(uraian, biaya, keterangan, huruf=""):
-        """Sub-baris rincian hotel: uraian + keterangan merah inline di baris yang sama."""
+    sub_ket_x = ket_x + 0.7*cm   # indent teks sub-baris; huruf a/b/c ditaruh di ket_x (persis di bawah "B" item induk)
+
+    def sub_row(uraian, qty, satuan, total, huruf="", keterangan=""):
+        """Sub-baris berhuruf (a/b/c...) di bawah item induk (Biaya Transportasi / Biaya Penginapan).
+        Huruf sejajar dengan awal teks item induk (ket_x); teks sub-baris diindent 0.7cm lagi."""
         nonlocal y
-        item_row("", f"   {uraian}", 1, biaya, biaya)
+        c.setFont(FONT_NORMAL, FONT_SIZE)
+        c.setFillColor(colors.black)
         if huruf:
-            c.setFont(FONT_NORMAL, FONT_SIZE)
-            c.setFillColor(colors.black)
-            c.drawString(no_x + 0.4*cm, y + rh, huruf)
+            c.drawString(ket_x, y, huruf)
+        c.drawString(sub_ket_x, y, uraian)
+        if qty is not None and satuan is not None:
+            qty_str = f"{qty}  x  {fmt_rp(satuan)}  ="
+            c.drawRightString(num_x, y, qty_str)
+        if total is not None:
+            c.drawString(rp_x, y, "Rp")
+            c.drawRightString(tot_x, y, f"{total:,.0f}".replace(",","."))
         if keterangan:
-            teks_uraian = f"   {uraian}"
-            lebar_uraian = stringWidth(teks_uraian, FONT_NORMAL, FONT_SIZE)
+            lebar_uraian = stringWidth(uraian, FONT_NORMAL, FONT_SIZE)
             c.setFont(FONT_NORMAL, FONT_SIZE - 1)
             c.setFillColor(colors.red)
-            c.drawString(ket_x + lebar_uraian + 0.15*cm, y + rh, keterangan)
+            c.drawString(sub_ket_x + lebar_uraian + 0.15*cm, y, keterangan)
             c.setFillColor(colors.black)
             c.setFont(FONT_NORMAL, FONT_SIZE)
+        y -= rh
+
+    def hotel_sub_row(uraian, biaya, keterangan, huruf="", hari=1):
+        """Sub-baris rincian hotel: hari x rate = biaya, rate dihitung mundur dari biaya ÷ hari."""
+        hari = hari if hari and hari > 0 else 1
+        rate = round(biaya / hari)
+        sub_row(uraian, hari, rate, biaya, huruf, keterangan)
 
     lama      = data.get("lama_hari", 0)
     uh        = data.get("uang_harian", 0)
@@ -1384,10 +1399,13 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         # Pencairan: belum ada tiket aktual
         item_row("", "   a.", bold=False)
     else:
-        # Realisasi: tiket aktual
-        for tr in data.get("items_transport", []):
-            total_tr = tr.get("qty", 1) * tr.get("satuan", 0)
-            item_row("", f"   {tr.get('keterangan','')}", tr.get("qty",1), tr.get("satuan",0), total_tr)
+        # Realisasi: tiket aktual — huruf a/b/c hanya muncul kalau lebih dari 1 tiket
+        items_transport = data.get("items_transport", [])
+        multi_tr = len(items_transport) > 1
+        for i, tr in enumerate(items_transport):
+            qty, satuan = tr.get("qty", 1), tr.get("satuan", 0)
+            huruf = chr(ord('a') + i) + "." if multi_tr else ""
+            sub_row(tr.get('keterangan',''), qty, satuan, qty * satuan, huruf)
 
     # Penginapan
     if mode == "pencairan":
@@ -1401,13 +1419,13 @@ def _draw_tanda_terima(c, data, mode="pencairan"):
         if hotel_items:
             # Render semua baris hotel; uraian="" → tampil sebagai "30% pagu penginapan"
             rendered = [
-                (h.get("uraian") or "30% pagu penginapan", h.get("biaya", 0), h.get("keterangan") or "")
+                (h.get("uraian") or "30% pagu penginapan", h.get("biaya", 0), h.get("keterangan") or "", h.get("hari") or 1)
                 for h in hotel_items
             ]
             multi = len(rendered) > 1
-            for i, (uraian, biaya, ket) in enumerate(rendered):
+            for i, (uraian, biaya, ket, hari) in enumerate(rendered):
                 huruf = chr(ord('a') + i) + "." if multi else ""
-                hotel_sub_row(uraian, biaya, ket, huruf)
+                hotel_sub_row(uraian, biaya, ket, huruf, hari)
         else:
             penginapan = data.get("biaya_penginapan_aktual", 0)
             if penginapan:

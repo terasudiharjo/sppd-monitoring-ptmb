@@ -133,6 +133,15 @@ jenis_transport, biaya_transport, created_at, updated_at
 id, sppd_id, urutan, keterangan, jumlah, created_at
 ```
 
+### Kolom penting `sppd_hotel_detail`:
+```
+id, sppd_id, urutan, uraian, biaya, keterangan,
+hari INTEGER NOT NULL DEFAULT 1  ← jumlah malam untuk baris ini, dipakai hitung rate mundur di PDF
+created_at
+```
+→ `uraian = ""` → item 30% pagu penginapan; `uraian != ""` → hotel bernama (diinap/direimbus).
+→ `hari` dipakai di PDF Realisasi untuk render "hari × rate = biaya" (rate = biaya ÷ hari, dibulatkan). Berlaku untuk baris 30% pagu maupun hotel bernama.
+
 ---
 
 ## Dokumen PDF yang Dihasilkan (`utils/pdf_generator.py`)
@@ -255,19 +264,20 @@ Kolom `sppd`: `menginap BOOLEAN DEFAULT TRUE`, `hari_tidak_menginap INTEGER DEFA
 - Spinner `hari_tidak_menginap` (0 s/d max_malam, pre-fill dari DB)
 - Auto-calc: `biaya_30pct = hari_tdk × plafon × 30%`
 - Dropdown keterangan (hanya untuk label PDF): `(30% belum dibayar)` | `(30% sudah dibayar)`
-- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian = ""` (penanda 30%)
+- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian = ""` (penanda 30%), `hari = hari_tidak_menginap`
 - `sppd.hari_tidak_menginap` di-update saat simpan
 
 *Section B — Hotel:*
-- Input manual per baris: Uraian (nama hotel) | Keterangan | Biaya
+- Input manual per baris: Uraian (nama hotel) | Keterangan | **Hari** | Biaya (total, bukan rate/hari)
 - Dropdown keterangan: `(sudah dibayar)` | `(belum dibayar)` | `(pribadi sudah dibayar)` | `(pribadi belum dibayar)`
-- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian != ""`
+- Disimpan ke `sppd_hotel_detail` sebagai item dengan `uraian != ""`, `hari` = jumlah malam di hotel itu (default 1)
+- Rate/malam **tidak** diinput langsung — dihitung mundur di PDF (`biaya ÷ hari`), form tetap cuma minta total biaya + hari
 
 - `total_hotel = biaya_30pct + Σ biaya hotel` — keduanya masuk deduct RKAP
 
 **Konvensi `sppd_hotel_detail`**: `uraian = ""` → item 30% (auto-calc); `uraian != ""` → hotel yang diinap/direimbus.
 
-**PDF Realisasi**: "Biaya Penginapan [total]" sebagai header; sub-baris per item dengan huruf a/b/c jika > 1 item; `uraian=""` tampil sebagai "30% pagu penginapan"; keterangan merah inline setelah nama hotel.
+**PDF Realisasi**: "Biaya Penginapan [total]" sebagai header; sub-baris per item dengan huruf a/b/c jika > 1 item; `uraian=""` tampil sebagai "30% pagu penginapan"; keterangan merah inline setelah nama hotel; tiap sub-baris tampil format `hari × Rp rate = Rp biaya` (rate dihitung mundur dari `biaya ÷ hari`, dibulatkan) — mengakomodasi 1 perjalanan dinas menginap di beberapa hotel berbeda dengan jumlah malam berbeda-beda.
 
 **Backward compat**: Record lama (`menginap=FALSE`, `hari_tidak_menginap=0`) → PDF pencairan pakai `total_hotel` dari DB langsung.
 
